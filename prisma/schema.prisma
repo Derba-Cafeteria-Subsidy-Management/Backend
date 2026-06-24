@@ -19,6 +19,11 @@ enum UserStatus {
   SUSPENDED
 }
 
+enum MenuItemStatus {
+  ACTIVE
+  INACTIVE
+}
+
 enum AuditAction {
   USER_INVITED
   INVITATION_ACCEPTED
@@ -30,6 +35,10 @@ enum AuditAction {
   LOGOUT_ALL
   USER_STATUS_CHANGED
   ROLE_CHANGED
+  MENU_ITEM_CREATED
+  MENU_ITEM_UPDATED
+  MENU_ITEM_DELETED
+  PRICE_HISTORY_CREATED
 }
 
 model User {
@@ -91,6 +100,34 @@ model PasswordResetToken {
 
   @@index([userId])
   @@map("password_reset_tokens")
+}
+
+model menu_items {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+
+  status      MenuItemStatus @default(ACTIVE)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  PriceHistory price_history[]
+  
+  @@map("menu_items")
+}
+
+model price_history {
+  id         String   @id @default(uuid())
+  menuItemId String
+  menuItem   menu_items @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  price      Float
+  effctive_from DateTime
+  effective_to DateTime?
+  createdBy      String?
+
+  createdAt      DateTime @default(now())
+
+  @@map("price_history")
 }
 
 model AuditLog {
