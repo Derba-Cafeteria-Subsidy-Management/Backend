@@ -4,6 +4,10 @@ import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import { config } from './config.js';
 import { authRouter } from './features/auth/router/auth.router.js';
+import { transactionRouter } from './features/Transaction/router/transaction.router.js';
+import { syncRouter } from './features/sync/router/sync.router.js';
+import { correctionRouter } from './features/correction/router/correction.router.js';
+import { subsidyRouter } from './features/subsidy/router/subsidy.router.js';
 import { errorHandler, notFoundHandler } from './errors/errors/apperror.js';
 
 export const app = express();
@@ -33,6 +37,10 @@ app.use(express.json());
 app.get('/health', (_req: Request, res: Response) => res.json({ ok: true }));
 
 app.use('/api/auth', authRouter);
+app.use('/api/transaction', transactionRouter);
+app.use('/api/sync', syncRouter);
+app.use('/api/correction', correctionRouter);
+app.use('/api/subsidy', subsidyRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

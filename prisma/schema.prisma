@@ -39,6 +39,16 @@ enum AuditAction {
   MENU_ITEM_UPDATED
   MENU_ITEM_DELETED
   PRICE_HISTORY_CREATED
+  create_transaction
+  create_employee
+  update_employee
+  deactivate_employee
+  activate_employee
+  create_correction_request
+  approve_correction
+  reject_correction
+  create_subsidy_config
+  offline_sync_batch
 }
 
 model User {
@@ -54,10 +64,15 @@ model User {
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
-  refreshTokens       RefreshToken[]
-  passwordResetTokens PasswordResetToken[]
-  invitationsSent     Invitation[]         @relation("InvitedBy")
-  auditLogs           AuditLog[]
+  refreshTokens                RefreshToken[]
+  passwordResetTokens          PasswordResetToken[]
+  invitationsSent              Invitation[]           @relation("InvitedBy")
+  auditLogs                    AuditLog[]
+  Transactions                 Transaction[]
+  correctionRequests           correction_requests[]  @relation("RequestedBy")
+  approvedCorrectionRequests   correction_requests[]  @relation("ApprovedCorrectionRequests")
+  rejectedCorrectionRequests   correction_requests[]  @relation("RejectedCorrectionRequests")
+  offlineSyncRecords           offline_sync_records[]
 
   @@map("users")
 }
@@ -103,31 +118,148 @@ model PasswordResetToken {
 }
 
 model menu_items {
-  id          String   @id @default(uuid())
+  id          String  @id @default(uuid())
   name        String
   description String?
 
-  status      MenuItemStatus @default(ACTIVE)
+  status MenuItemStatus @default(ACTIVE)
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
   PriceHistory price_history[]
-  
+  transactions Transaction[]
+
   @@map("menu_items")
 }
 
 model price_history {
-  id         String   @id @default(uuid())
-  menuItemId String
-  menuItem   menu_items @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
-  price      Float
+  id            String     @id @default(uuid())
+  menuItemId    String
+  menuItem      menu_items @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  price         Float
   effctive_from DateTime
-  effective_to DateTime?
-  createdBy      String?
+  effective_to  DateTime?
+  createdBy     String?
 
-  createdAt      DateTime @default(now())
+  createdAt DateTime @default(now())
 
   @@map("price_history")
+}
+
+model employees {
+  id              String         @id @default(uuid())
+  Employee_number String         @unique
+  photo           String
+  full_name       String
+  department      String
+  fingerprint_id  String         @unique
+  status          EmployeeStatus @default(ACTIVE)
+  created_at      DateTime       @default(now())
+
+  updated_at   DateTime      @updatedAt
+  Transactions Transaction[]
+
+  @@map("employees")
+  @@index([fingerprint_id])
+  @@index([status])
+}
+
+enum EmployeeStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum mealType {
+  BREAKFAST
+  LUNCH
+  DINNER
+}
+
+model Transaction {
+  id              String   @id @default(uuid())
+  employeeId      String
+  employee        employees @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  menu_item_id    String
+  menu_item       menu_items @relation(fields: [menu_item_id], references: [id], onDelete: Cascade)
+  menu_session    mealType
+  menu_price      Float
+  employee_share  Float
+  company_share   Float
+  transactionDate DateTime @db.Date
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  cashierId       String
+  cashier         User     @relation(fields: [cashierId], references: [id], onDelete: Cascade)
+
+  correction_requests  correction_requests[]
+  offline_sync_records offline_sync_records[]
+
+  @@unique([employeeId, menu_session, transactionDate], name: "unique_meal_per_day")
+  @@index([transactionDate])
+  @@index([cashierId])
+  @@map("transactions")
+}
+
+model correction_requests {
+  id            String                  @id @default(uuid())
+  transactionId String
+  transaction   Transaction             @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  requestedById String
+  requestedBy   User                    @relation("RequestedBy", fields: [requestedById], references: [id], onDelete: Cascade)
+  reason        String
+  status        CorrectionRequestStatus @default(PENDING)
+  createdAt     DateTime                @default(now())
+  updatedAt     DateTime                @updatedAt
+
+  old_values Json?
+  new_values Json?
+
+  approvedById     String?
+  approvedBy       User?     @relation("ApprovedCorrectionRequests", fields: [approvedById], references: [id], onDelete: SetNull)
+  approvedAt       DateTime?
+  rejectedById     String?
+  rejectedBy       User?     @relation("RejectedCorrectionRequests", fields: [rejectedById], references: [id], onDelete: SetNull)
+  rejectedAt       DateTime?
+  rejectionReason  String?
+
+  @@index([status])
+  @@index([createdAt])
+  @@map("correction_requests")
+}
+
+enum CorrectionRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model Subsidy_config {
+  id             String    @id @default(uuid())
+  company_share  Float
+  employee_share Float
+  effective_from DateTime
+  effective_to   DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@map("subsidy_config")
+}
+
+model offline_sync_records {
+  id            String       @id @default(uuid())
+  localId       String       @unique
+  stationId     String
+  transactionId String?
+  transaction   Transaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+  cashierId     String
+  cashier       User         @relation(fields: [cashierId], references: [id], onDelete: Cascade)
+  syncStatus    String
+  syncReason    String?
+  createdAt     DateTime     @default(now())
+
+  @@index([stationId])
+  @@map("offline_sync_records")
 }
 
 model AuditLog {
