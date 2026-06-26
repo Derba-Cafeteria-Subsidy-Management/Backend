@@ -6,8 +6,11 @@ import {
     createMenu,
     updateMenu,
     addPriceVersion,
-    getPriceHistory
+    getPriceHistory,
+    previewMenuImport
 } from '../service/menu.service';
+import { getImportPreview, removeImportPreview } from '../helpers/import-cache';
+import { prisma } from '../../../libs/lib/prisma';
 
 
 export const getMenu =
@@ -117,3 +120,83 @@ export const getPriceHistorys =
             data
         });
     };
+
+export const importMenuPreviewController = async (
+    req: Request,
+    res: Response
+) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({
+                success: false,
+                message: "Excel file is required",
+            });
+        }
+
+        const result = await previewMenuImport(req.file);
+
+        return res.status(200).json({
+            success: true,
+            data: result,
+        });
+
+    } catch (error: any) {
+        return res.status(500).json({
+            success: false,
+            message: error.message || "Preview failed",
+        });
+    }
+};
+
+export const confirmMenuImportController = async (
+    req: Request,
+    res: Response
+) => {
+    try {
+        const { previewToken } = req.body;
+
+        if (!previewToken) {
+            return res.status(400).json({
+                success: false,
+                message: "previewToken is required",
+            });
+        }
+
+        const rows = getImportPreview(previewToken);
+
+        if (!rows) {
+            return res.status(400).json({
+                success: false,
+                message: "Preview expired or not found",
+            });
+        }
+
+        const result = await prisma.$transaction(async (tx) => {
+            const created = await tx.menu_items.createMany({
+                data: rows.map((r) => ({
+                    name: r.name,
+                    description: r.description ?? '',
+                    price: r.price,
+                    effectiveFrom: r.effectiveFrom ?? new Date(),
+                })),
+                skipDuplicates: true,
+            });
+
+            return created;
+        });
+
+        removeImportPreview(previewToken);
+
+        return res.status(201).json({
+            success: true,
+            message: "Menu import completed",
+            inserted: result.count,
+        });
+
+    } catch (error: any) {
+        return res.status(500).json({
+            success: false,
+            message: error.message || "Import failed",
+        });
+    }
+};

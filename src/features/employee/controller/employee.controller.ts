@@ -1,4 +1,4 @@
-import { createEmployee, deactivateEmployee, fingerprintScan, getEmployeeById, getEmployees } from "../service/employee.service";
+import { createEmployee, deactivateEmployee, fingerprintScan, getEmployeeById, getEmployees, updateEmployee } from "../service/employee.service";
 
 import type { Request, Response, NextFunction } from 'express';
 
@@ -133,6 +133,4 @@ export const getEmployeesController =
         });
     };
 
-function updateEmployee(id: string | string[] | undefined, body: any) {
-    throw new Error("Function not implemented.");
-}
+
