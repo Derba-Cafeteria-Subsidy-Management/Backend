@@ -9,6 +9,13 @@ import { syncRouter } from './features/sync/router/sync.router.js';
 import { correctionRouter } from './features/correction/router/correction.router.js';
 import { subsidyRouter } from './features/subsidy/router/subsidy.router.js';
 import { errorHandler, notFoundHandler } from './errors/errors/apperror.js';
+import { menuRouter } from './features/menu/router/menu.router.js';
+import { employeeRouter } from './features/employee/router/employee.route.js';
+
+import swaggerUi from "swagger-ui-express";
+import swaggerSpec from "./config/swagger";
+
+
 
 export const app = express();
 
@@ -34,13 +41,23 @@ app.use(helmet());
 app.use(cookieParser());
 app.use(express.json());
 
+app.use(
+    "/api-docs",
+    swaggerUi.serve,
+    swaggerUi.setup(swaggerSpec)
+);
+
+
 app.get('/health', (_req: Request, res: Response) => res.json({ ok: true }));
 
+
 app.use('/api/auth', authRouter);
-app.use('/api/transaction', transactionRouter);
+app.use('/api/transactions', transactionRouter);
 app.use('/api/sync', syncRouter);
-app.use('/api/correction', correctionRouter);
+app.use('/api/corrections', correctionRouter);
 app.use('/api/subsidy', subsidyRouter);
+app.use('/api/menus' , menuRouter);
+app.use('/api/employees' , employeeRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
