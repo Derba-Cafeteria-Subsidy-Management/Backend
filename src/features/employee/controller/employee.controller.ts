@@ -1,3 +1,4 @@
+import { getRequestContextFromRequest } from "../../auth/service/auth.service";
 import { createEmployee, deactivateEmployee, fingerprintScan, getEmployeeById, getEmployees, updateEmployee } from "../service/employee.service";
 
 import type { Request, Response, NextFunction } from 'express';
@@ -45,8 +46,16 @@ export const getEmployeesController =
     export const createEmployeeController =
     async (req: Request, res: Response) => {
 
+        const context = getRequestContextFromRequest(req);
+
         const data =
-            await createEmployee(req.body);
+            await createEmployee(req.body,
+                {
+                    ...context,
+                    AdminId: req.user!.userId
+                }
+
+            );
 
         res.status(201).json({
             success: true,
@@ -86,10 +95,16 @@ export const getEmployeesController =
             });
         }
 
+        const context = getRequestContextFromRequest(req);
+
         const data =
             await updateEmployee(
                 req.params.id,
-                req.body
+                req.body,
+                {
+                    ...context,
+                    AdminId: req.user!.userId
+                }
             );
 
         res.status(200).json({
@@ -108,8 +123,14 @@ export const getEmployeesController =
             });
         }
 
+        const context = getRequestContextFromRequest(req);
+
         await deactivateEmployee(
-            req.params.id
+            req.params.id,
+            {
+                ...context,
+                AdminId: req.user!.userId
+            }
         );
 
         res.status(200).json({

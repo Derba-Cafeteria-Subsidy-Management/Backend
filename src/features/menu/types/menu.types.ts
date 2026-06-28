@@ -1,3 +1,5 @@
+import { RequestContext } from "../../auth/types/auth.types";
+
 export interface MenuResponse {
   id: string;
   name: string;
@@ -22,6 +24,10 @@ export interface UpdateMenuInput {
 export interface CreatePriceVersionInput {
   price: number;
   effectiveFrom: Date;
+}
+
+export interface CreateMenuContext extends RequestContext {
+  AdminId: string;
 }
 
 export interface ImportMenuRow {

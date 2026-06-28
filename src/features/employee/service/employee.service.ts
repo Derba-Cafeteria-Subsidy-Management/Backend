@@ -1,5 +1,7 @@
 import { prisma } from "../../../libs/lib/prisma.js";
+import { createAuditLog } from "../../auth/service/audit.service.js";
 import { getMealsToday } from "../Helper/getmeal.helper.js";
+import { CreateEmployeeContext } from "../types/employee.types.js";
 
 export const getEmployees = async (
     employeeNumber?: string,
@@ -8,8 +10,9 @@ export const getEmployees = async (
     status?: string,
     page = 1,
     limit = 20
-) => {
 
+
+) => {
     const where: any = {
         ...(employeeNumber && {
             Employee_number: {
@@ -87,7 +90,9 @@ export const createEmployee = async (
         department: string;
         fingerprintId: string;
         photo?: string;
-    }
+
+    },
+    context: CreateEmployeeContext
 ) => {
 
     const exists =
@@ -127,6 +132,27 @@ export const createEmployee = async (
                     body.photo ?? '',
             },
         });
+
+    await createAuditLog({
+        userId: context.AdminId,
+        action: 'create_employee',
+        entityType: 'Employees',
+        entityId: employee.id,
+        metadata: {
+            Employee_number:
+                body.employeeNumber,
+            full_name:
+                body.fullName,
+            department:
+                body.department,
+            fingerprint_id:
+                body.fingerprintId,
+            photo:
+                body.photo ?? ''
+        },
+        ipAddress: context.ipAddress,
+        userAgent: context.userAgent,
+    });
 
     return {
         id: employee.id,
@@ -171,14 +197,15 @@ export const getEmployeeById =
         };
     };
 
-    export const updateEmployee = async (
+export const updateEmployee = async (
     id: string,
     body: {
         fullName?: string;
         department?: string;
         photo?: string;
         status?: string;
-    }
+    },
+    context: CreateEmployeeContext
 ) => {
 
     const employee =
@@ -218,6 +245,22 @@ export const getEmployeeById =
             },
         });
 
+
+    await createAuditLog({
+        userId: context.AdminId,
+        action: 'update_employee',
+        entityType: 'Employees',
+        entityId: employee.id,
+        metadata: {
+            id: updated.id,
+            updatedAt:
+                updated.updated_at,
+
+        },
+        ipAddress: context.ipAddress,
+        userAgent: context.userAgent,
+    });
+
     return {
         id: updated.id,
         updatedAt:
@@ -226,7 +269,7 @@ export const getEmployeeById =
 };
 
 export const deactivateEmployee =
-    async (id: string) => {
+    async (id: string, context: CreateEmployeeContext) => {
 
         const employee =
             await prisma.employees.findUnique({
@@ -239,16 +282,55 @@ export const deactivateEmployee =
             );
         }
 
-        await prisma.employees.update({
-            where: { id },
-            data: {
-                status: 'INACTIVE',
-            },
-        });
+        if (employee.status == 'ACTIVE') {
+
+            await prisma.employees.update({
+                where: { id },
+                data: {
+                    status: 'INACTIVE',
+                },
+            });
+
+            await createAuditLog({
+                userId: context.AdminId,
+                action: 'deactivate_employee',
+                entityType: 'Employees',
+                entityId: employee.id,
+                metadata: {
+                    id: employee.id
+                },
+                ipAddress: context.ipAddress,
+                userAgent: context.userAgent,
+            });
+
+        } else {
+
+            await prisma.employees.update({
+                where: { id },
+                data: {
+                    status: 'ACTIVE',
+                },
+            });
+
+            await createAuditLog({
+                userId: context.AdminId,
+                action: 'activate_employee',
+                entityType: 'Employees',
+                entityId: employee.id,
+                metadata: {
+                    id: employee.id
+                },
+                ipAddress: context.ipAddress,
+                userAgent: context.userAgent,
+            });
+
+        }
+
+
     };
 
 
-    export const fingerprintScan =
+export const fingerprintScan =
     async (
         fingerprintId: string
     ) => {

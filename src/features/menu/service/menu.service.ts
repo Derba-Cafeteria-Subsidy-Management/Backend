@@ -2,7 +2,8 @@ import { prisma } from '../../../libs/lib/prisma.js';
 import {
   CreateMenuInput,
   UpdateMenuInput,
-  CreatePriceVersionInput
+  CreatePriceVersionInput,
+  CreateMenuContext
 } from '../types/menu.types';
 
 import XLSX from "xlsx";
@@ -15,6 +16,7 @@ import {
 import {
     saveImportPreview
 } from "../helpers/import-cache";
+import { createAuditLog } from '../../auth/service/audit.service.js';
 
 export const getMenus = async (
   activeOnly = true,
@@ -76,7 +78,8 @@ return {
 
 export const createMenu = async (
   input: CreateMenuInput,
-  createdBy: string
+
+  context: CreateMenuContext
 ) => {
 
   const effectiveFrom =
@@ -100,11 +103,26 @@ export const createMenu = async (
           menuItemId: menu.id,
           price: input.price,
           effectiveFrom,
-          effectiveTo: null,
-          createdBy
+          effectiveTo: null,  
+          createdby:context.AdminId
+          
         }
       });
 
+        await createAuditLog({
+    userId:  context.AdminId,
+    action: 'MENU_ITEM_CREATED',
+    entityType: 'Menu_items',
+    entityId:menu.id,
+    metadata: {
+      menuItemId:menu.id,
+      menuname:input.name,
+      effectiveFrom: effectiveFrom,
+      price: input.price
+    },
+    ipAddress: context.ipAddress,
+    userAgent: context.userAgent,
+  });
       return menu;
     }
   );
@@ -112,8 +130,24 @@ export const createMenu = async (
 
 export const updateMenu = async (
   id: string,
-  input: UpdateMenuInput
+  input: UpdateMenuInput,
+  context: CreateMenuContext
 ) => {
+
+   await createAuditLog({
+    userId: context.AdminId,
+    action: 'MENU_ITEM_UPDATED',
+    entityType: 'Menu_items',
+    entityId: id,
+    metadata: {
+      menuItemId:id,
+  /*     menuname:input.name,
+      effectiveFrom: effectiveFrom,
+      price: input.price */
+    },
+    ipAddress: context.ipAddress,
+    userAgent: context.userAgent,
+  });
 
   return prisma.menu_items.update({
     where: {
@@ -140,76 +174,98 @@ export const updateMenu = async (
   });
 };
 
-export const addPriceVersion =
-  async (
-    menuId: string,
-    input: CreatePriceVersionInput,
-    userId: string
-  ) => {
-
-    return prisma.$transaction(
-      async (tx: any) => {
-
-        const currentPrice =
-          await tx.price_history.findFirst({
-            where: {
-              menuItemId: menuId,
-              effectiveTo: null
-            }
-          });
-
-        if (!currentPrice) {
-          throw new Error(
-            'Current price not found'
-          );
-        }
-
-        const previousDay =
-          new Date(input.effectiveFrom);
-
-        previousDay.setDate(
-          previousDay.getDate() - 1
-        );
-
-        await tx.price_history.update({
-          where: {
-            id: currentPrice.id
-          },
-
-          data: {
-            effectiveTo:
-              previousDay
-          }
-        });
-
-        return tx.price_history.create({
-          data: {
-            menuItemId: menuId,
-            price: input.price,
-            effectiveFrom:
-              input.effectiveFrom,
-            effectiveTo: null,
-            createdBy: userId
-          }
-        });
-      }
-    );
-  };
-
-  export const getPriceHistory =
-  async (menuId: string) => {
-
-    return prisma.price_history.findMany({
+export const addPriceVersion = async (
+  menuId: string,
+  input: CreatePriceVersionInput,
+  context: CreateMenuContext
+) => {
+  return prisma.$transaction(async (tx) => {
+    // Find current active price
+    const currentPrice = await tx.price_history.findFirst({
       where: {
-        menuItemId: menuId
+        menuItemId: menuId,
+        effective_to: null, // match schema field
       },
-
-      orderBy: {
-        effctive_from: 'desc'
-      }
     });
-  };
 
+    if (!currentPrice) {
+      throw new Error("Current price not found");
+    }
+
+    // Close out the current price one day before new effectiveFrom
+    const previousDay = new Date(input.effectiveFrom);
+    previousDay.setDate(previousDay.getDate() - 1);
+
+    await tx.price_history.update({
+      where: { id: currentPrice.id },
+      data: { effective_to: previousDay },
+    });
+
+    await createAuditLog({
+    userId: context.AdminId,
+    action: 'MENU_ITEM_UPDATED',
+    entityType: 'Menu_items',
+    entityId: menuId,
+    metadata: {
+      menuItemId:menuId,
+      price: input.price,
+      effectiveFrom: input.effectiveFrom,
+    },
+    ipAddress: context.ipAddress,
+    userAgent: context.userAgent,
+  });
+
+    // Insert new price version
+    return tx.price_history.create({
+      data: {
+        menuItemId: menuId,
+        price: input.price,
+        effctive_from: input.effectiveFrom, // match schema field
+        effective_to: null,
+        createdBy: context.AdminId,
+      },
+      include: {
+        menuItem: {
+          select: {
+            id: true,
+            name: true,
+            status: true,
+            createdAt: true,
+          },
+        },
+      },
+    });
+  });
+};
+
+
+  export const getPriceHistory = async (menuId: string) => {
+  const priceHistories = await prisma.price_history.findMany({
+    where: { menuItemId: menuId },
+    orderBy: { effctive_from: 'desc' },
+    include: {
+      menuItem: true, // include relation so you can access menuItem fields
+      createdByUser: true,
+    },
+  });
+
+  return priceHistories.map((ph) => ({
+    id: ph.id,
+    menuItemId: ph.menuItemId,
+    menuItem: {
+      id: ph.menuItem.id,
+      name: ph.menuItem.name,
+      status: ph.menuItem.status,
+      createdAt: ph.menuItem.createdAt,
+    },
+    price: ph.price,
+    effectiveFrom: ph.effctive_from, // use schema field name
+    effectiveTo: ph.effective_to,
+    // include createdBy user details
+    createdBy: ph.createdByUser.email,
+    createdAt: ph.createdAt,
+  }));
+};
 
 
 export const previewMenuImport =
@@ -337,7 +393,7 @@ async (
             price:
                 Number(row.Price),
 
-            effectiveFrom: row.EffectiveFrom
+            effectiveFrom: row.EffectiveFrom ? new Date(row.EffectiveFrom) : new Date()
                
                
 

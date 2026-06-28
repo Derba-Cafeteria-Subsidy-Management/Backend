@@ -11,6 +11,7 @@ import {
 } from '../service/menu.service';
 import { getImportPreview, removeImportPreview } from '../helpers/import-cache';
 import { prisma } from '../../../libs/lib/prisma';
+import { getRequestContextFromRequest } from '../../auth/service/auth.service';
 
 
 export const getMenu =
@@ -35,13 +36,38 @@ export const getMenu =
         });
     };
 
-export const createMenus =
+export const getActiveMenu =
     async (req: Request, res: Response) => {
 
+        const activeOnly = true;
+        const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
+        const pageSize = req.query.pageSize ? parseInt(req.query.pageSize as string, 10) : 10;
+        const query = req.query.query ? String(req.query.query) : undefined;
+
+        const data =
+            await getMenus(
+                activeOnly,
+                page,
+                pageSize,
+                query
+            );
+
+        res.status(200).json({
+            success: true,
+            data
+        });
+    };
+
+export const createMenus =
+    async (req: Request, res: Response) => {
+        const context = getRequestContextFromRequest(req);
         const menu =
             await createMenu(
                 req.body,
-                req.user!.userId
+                {
+                    ...context,
+                    AdminId:req.user!.userId
+                }
             );
 
         res.status(201).json({
@@ -61,10 +87,16 @@ export const updateMenus =
             });
         }
 
+        const context = getRequestContextFromRequest(req);
+
         const menu =
             await updateMenu(
                 req.params.id,
-                req.body
+                req.body,
+                {
+                    ...context,
+                    AdminId: req.user!.userId
+                }
             );
 
         res.status(200).json({
@@ -87,11 +119,18 @@ export const addPriceVersions =
             });
         }
 
+        const context = getRequestContextFromRequest(req);
+
         const result =
             await addPriceVersion(
                 req.params.id,
                 req.body,
-                req.user!.userId
+                {
+                    ...context,
+                    AdminId:req.user!.userId
+
+                }
+                
             );
 
         res.status(201).json({
@@ -172,25 +211,37 @@ export const confirmMenuImportController = async (
         }
 
         const result = await prisma.$transaction(async (tx) => {
-            const created = await tx.menu_items.createMany({
-                data: rows.map((r) => ({
-                    name: r.name,
-                    description: r.description ?? '',
-                    price: r.price,
-                    effectiveFrom: r.effectiveFrom ?? new Date(),
-                })),
-                skipDuplicates: true,
-            });
+            const createdMenus = await Promise.all(
+                rows.map((r) =>
+                    tx.menu_items.create({
+                        data: {
+                            name: r.name,
+                            description: r.description ?? '',
+                            PriceHistory: {
+                                create: {
+                                    price: r.price,
+                                    effctive_from: r.effectiveFrom ?? new Date(),
+                                    effective_to: null,
+                                    createdBy: req.user!.userId,
+                                },
+                            },
+                        },
+                        include: { PriceHistory: true },
+                    })
+                )
+            );
 
-            return created;
+            return createdMenus;
         });
+
+
 
         removeImportPreview(previewToken);
 
         return res.status(201).json({
             success: true,
             message: "Menu import completed",
-            inserted: result.count,
+            inserted: result.length,
         });
 
     } catch (error: any) {

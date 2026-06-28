@@ -32,7 +32,7 @@ export const getCorrectionsHandler = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const query = req.query as unknown as CorrectionListQuery;
+    const query = res.locals.query as CorrectionListQuery;
     const data = await getCorrectionRequests(query);
 
     res.status(200).json({ success: true, data });

@@ -14,6 +14,7 @@ import { employeeRouter } from './features/employee/router/employee.route.js';
 
 import swaggerUi from "swagger-ui-express";
 import swaggerSpec from "./config/swagger";
+import { userManagementRouter } from './features/user/routers/user-managment.route.js';
 
 
 
@@ -58,6 +59,7 @@ app.use('/api/corrections', correctionRouter);
 app.use('/api/subsidy', subsidyRouter);
 app.use('/api/menus' , menuRouter);
 app.use('/api/employees' , employeeRouter);
+app.use('/api/users',userManagementRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
