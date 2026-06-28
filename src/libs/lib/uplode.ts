@@ -1,6 +1,6 @@
 
 
-import { Request} from 'express';
+import { Request } from 'express';
 
 import multer from "multer";
 
@@ -24,7 +24,11 @@ export const upload = multer({
     fileSize: 5 * 1024 * 1024,
   },
 
-  fileFilter(req, file, cb) {
+  fileFilter(
+    req: Express.Request,
+    file: Express.Multer.File,
+    cb: multer.FileFilterCallback
+  ) {
     if (!file.mimetype.startsWith("image/")) {
       return cb(new Error("Only images allowed"));
     }

@@ -7,7 +7,11 @@ export const uploadExcel = multer({
     limits: {
         fileSize: 5 * 1024 * 1024, // 5MB limit
     },
-    fileFilter: (req, file, cb) => {
+    fileFilter: (
+  req: Express.Request,
+  file: Express.Multer.File,
+  cb: multer.FileFilterCallback
+)=> {
         const allowedMimeTypes = [
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             "application/vnd.ms-excel",
@@ -20,3 +24,4 @@ export const uploadExcel = multer({
         cb(null, true);
     },
 });
+

@@ -28,6 +28,7 @@ export const getTransactionsHandler = async (
   res: Response,
   next: NextFunction
 ) => {
+
   try {
     const query = res.locals.query as TransactionListQuery;
     const data = await getTransactions(query, req.user!.role);
