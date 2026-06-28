@@ -49,10 +49,12 @@ enum AuditAction {
   reject_correction
   create_subsidy_config
   offline_sync_batch
+  SYSTEM_SETTINGS_UPDATED
 }
 
 model User {
   id           String     @id @default(uuid())
+  Employee_number String?    @unique
   email        String     @unique
   passwordHash String?
   role         UserRole
@@ -73,8 +75,10 @@ model User {
   approvedCorrectionRequests   correction_requests[]  @relation("ApprovedCorrectionRequests")
   rejectedCorrectionRequests   correction_requests[]  @relation("RejectedCorrectionRequests")
   offlineSyncRecords           offline_sync_records[]
+  priceHistoryCreatedBy          price_history[]        @relation("PriceHistoryCreatedBy")
 
   @@map("users")
+  systemSettings system_settings[]
 }
 
 model Invitation {
@@ -139,7 +143,8 @@ model price_history {
   price         Float
   effctive_from DateTime
   effective_to  DateTime?
-  createdBy     String?
+  createdBy     String
+  createdByUser User       @relation("PriceHistoryCreatedBy", fields: [createdBy], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
 
@@ -260,6 +265,21 @@ model offline_sync_records {
 
   @@index([stationId])
   @@map("offline_sync_records")
+}
+
+model system_settings {
+  id String @id @default(uuid())
+
+  fingerprintEnabled    Boolean @default(true)
+  employeeSearchEnabled Boolean @default(true)
+
+  updatedById String?
+  updatedBy User? @relation(fields: [updatedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("system_settings")
 }
 
 model AuditLog {
