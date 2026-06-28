@@ -11,13 +11,20 @@ export const endOfDay = (date: Date): Date => {
 };
 
 export const toDateOnlyString = (date: Date): string => {
-  return date.toISOString().split('T')[0]!;
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
 };
 
 export const parseDateOnly = (value: string): Date => {
-  const parsed = new Date(`${value}T00:00:00.000Z`);
-  if (Number.isNaN(parsed.getTime())) {
+
+  const [year, month, day] = value.split('-').map(Number);
+  if (year == undefined || month == undefined || day == undefined) {
     throw new Error('Invalid date');
+
   }
-  return parsed;
+  return new Date(year, month - 1, day);
+
 };

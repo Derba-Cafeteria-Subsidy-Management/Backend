@@ -29,8 +29,7 @@ export const getActiveMenuPrice = async (
   const priceRecord = await prisma.price_history.findFirst({
     where: {
       menuItemId,
-      effctive_from: { lte: referenceDate },
-      OR: [{ effective_to: null }, { effective_to: { gte: referenceDate } }],
+      effective_to: null,
     },
     orderBy: { effctive_from: 'desc' },
   });
@@ -47,10 +46,8 @@ export const getActiveSubsidyConfig = async (asOf: Date = new Date()) => {
 
   const config = await prisma.subsidy_config.findFirst({
     where: {
-      effective_from: { lte: referenceDate },
-      OR: [{ effective_to: null }, { effective_to: { gte: referenceDate } }],
-    },
-    orderBy: { effective_from: 'desc' },
+       effective_to: null,
+    }
   });
 
   if (!config) {

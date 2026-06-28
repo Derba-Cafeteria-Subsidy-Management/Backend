@@ -27,10 +27,21 @@ export const getTransactionsHandler = async (
   req: Request,
   res: Response,
   next: NextFunction
-): Promise<void> => {
+) => {
   try {
     const query = res.locals.query as TransactionListQuery;
     const data = await getTransactions(query, req.user!.role);
+
+    if (
+      req.user!.role === 'CASHIER' &&
+      query.from && query.to &&
+      query.from !== query.to
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: 'Cashiers are not authorized to view transactions for multiple days',
+      });
+    }
 
     res.status(200).json({ success: true, data });
   } catch (error) {

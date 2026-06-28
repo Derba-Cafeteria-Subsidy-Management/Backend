@@ -1,4 +1,6 @@
+import { prisma } from "../../../libs/lib/prisma";
 import { getRequestContextFromRequest } from "../../auth/service/auth.service";
+import { getSystemSettings } from "../../system-settings/helpers/system-settings.helper.ts/system-settings.helper";
 import { createEmployee, deactivateEmployee, fingerprintScan, getEmployeeById, getEmployees, updateEmployee } from "../service/employee.service";
 
 import type { Request, Response, NextFunction } from 'express';
@@ -28,6 +30,17 @@ export const getEmployeesController =
                 ? parseInt(req.query.limit as string)
                 : 20;
 
+        const isCashier = req.user!.role === "CASHIER";
+        const settings = await getSystemSettings();
+        const isSearching = employeeNumber || name || department || status;
+
+        if (isCashier && !settings.employeeSearchEnabled && isSearching) {
+            return res.status(403).json({
+                success: false,
+                message: "Employee search is disabled for cashiers",
+            });
+        }
+
         const data = await getEmployees(
             employeeNumber,
             name,
@@ -43,7 +56,7 @@ export const getEmployeesController =
         });
     };
 
-    export const createEmployeeController =
+export const createEmployeeController =
     async (req: Request, res: Response) => {
 
         const context = getRequestContextFromRequest(req);
@@ -63,7 +76,7 @@ export const getEmployeesController =
         });
     };
 
-    export const getEmployeeByIdController =
+export const getEmployeeByIdController =
     async (req: Request, res: Response) => {
 
 
@@ -85,10 +98,10 @@ export const getEmployeesController =
         });
     };
 
-    export const updateEmployeeController =
+export const updateEmployeeController =
     async (req: Request, res: Response) => {
 
-               if (!req.params.id || Array.isArray(req.params.id)) {
+        if (!req.params.id || Array.isArray(req.params.id)) {
             return res.status(400).json({
                 success: false,
                 message: 'Employee ID is required'
@@ -113,7 +126,7 @@ export const getEmployeesController =
         });
     };
 
-    export const deactivateEmployeeController =
+export const deactivateEmployeeController =
     async (req: Request, res: Response) => {
 
         if (!req.params.id || Array.isArray(req.params.id)) {
@@ -140,7 +153,7 @@ export const getEmployeesController =
         });
     };
 
-    export const fingerprintScanController =
+export const fingerprintScanController =
     async (req: Request, res: Response) => {
 
         const data =

@@ -3,7 +3,7 @@ import { Router } from 'express';
 import { seedSuperAdmin } from '../../../scripts/seed-super-admin.js';
 import { authenticate } from '../../auth/middleware/authenticate.middleware.js';
 import { authorize } from '../../auth/middleware/authorize.middleware.js';
-import { addPriceVersions, confirmMenuImportController, createMenus, getMenu, getPriceHistorys, importMenuPreviewController, updateMenus } from '../controller/menu.controller.js';
+import { addPriceVersions, confirmMenuImportController, createMenus, getActiveMenu, getMenu, getPriceHistorys, importMenuPreviewController, updateMenus } from '../controller/menu.controller.js';
 import { uploadExcel } from '../../shared/helpers/upload.middleware.js';
 
 export const menuRouter = Router();
@@ -51,9 +51,52 @@ export const menuRouter = Router();
 menuRouter.get(
     '/',
     authenticate,
-    authorize('CASHIER', 'ADMIN', 'SUPER_ADMIN'),
+    authorize('ADMIN', 'SUPER_ADMIN'),
     //   validate(inviteUserSchema),
     getMenu
+);
+
+
+/**
+ * @openapi
+ * /api/menus/active:
+ *   get:
+ *     summary: Get active menu items
+ *     description: Returns a paginated list of active menu items.
+ *     tags:
+ *       - Menu
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: pageSize
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *       - in: query
+ *         name: query
+ *         schema:
+ *           type: string
+ *         description: Search by menu name or description.
+ *     responses:
+ *       200:
+ *         description: Menu items retrieved successfully.
+ *       401:
+ *         description: Authentication required.
+ *       403:
+ *         description: Access denied.
+ */
+menuRouter.get(
+    '/active',
+    authenticate,
+    authorize('CASHIER'),
+    //   validate(inviteUserSchema),
+    getActiveMenu
 );
 
 /**
@@ -243,17 +286,22 @@ menuRouter.get('/:id/price-history', authenticate, authorize('ADMIN'), getPriceH
 
 
 /**
- * @swagger
- * /menus/import/preview:
+ * @openapi
+ * /api/menus/import/preview:
  *   post:
  *     summary: Upload Excel file and preview menu import
- *     tags: [Menu Import]
+ *     tags:
+ *       - Menu
+ *     security:
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
  *         multipart/form-data:
  *           schema:
  *             type: object
+ *             required:
+ *               - file
  *             properties:
  *               file:
  *                 type: string
@@ -265,15 +313,20 @@ menuRouter.get('/:id/price-history', authenticate, authorize('ADMIN'), getPriceH
 menuRouter.post(
     "/import/preview",
     uploadExcel.single("file"),
+    authenticate, 
+    authorize('ADMIN'),
     importMenuPreviewController
 );
 
 /**
- * @swagger
- * /menus/import/confirm:
+ * @openapi
+ * /api/menus/import/confirm:
  *   post:
  *     summary: Confirm menu import using preview token
- *     tags: [Menu Import]
+ *     tags:
+ *       - Menu
+ *     security:
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -289,6 +342,8 @@ menuRouter.post(
  */
 menuRouter.post(
     "/import/confirm",
+    authenticate,
+    authorize('ADMIN'),
     confirmMenuImportController
 );
 
