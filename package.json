@@ -6,17 +6,14 @@
     "lib": "lib",
     "test": "tests"
   },
-  "scripts": {
-    "build": "npm run prisma:generate && tsc",
-    "lint": "tsc --noEmit",
-    "start": "node dist/server.js",
-    "dev": "tsx watch src/server.ts",
-    "test": "tsx --test tests/health.test.ts",
-    "prisma:generate": "node ./node_modules/prisma/build/index.js generate",
-    "prisma:migrate:dev": "node ./node_modules/prisma/build/index.js migrate dev",
-    "prisma:migrate:prod": "node ./node_modules/prisma/build/index.js migrate deploy",
-    "postinstall": "node ./node_modules/prisma/build/index.js generate"
-  },
+"scripts": {
+  "build": "npm run prisma:generate && tsc",
+  "start": "node dist/server.js",
+  "dev": "tsx watch src/server.ts",
+  "prisma:generate": "prisma generate",
+  "prisma:migrate:prod": "prisma migrate deploy",
+  "postinstall": "prisma generate"
+},
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Derba-Cafeteria-Subsidy-Management/Backend.git"
