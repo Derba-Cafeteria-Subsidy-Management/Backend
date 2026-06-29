@@ -201,18 +201,34 @@ export const confirmMenuImportController = async (
             });
         }
 
-        const rows = getImportPreview(previewToken);
+        const preview = getImportPreview(previewToken);
 
-        if (!rows) {
+        if (!preview) {
             return res.status(400).json({
                 success: false,
                 message: "Preview expired or not found",
             });
         }
 
+        if (preview.type !== "MENU") {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid preview type",
+            });
+        }
+
+        const rows = preview.rows;
+
+        if (!rows || rows.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: "No valid rows to import",
+            });
+        }
+
         const result = await prisma.$transaction(async (tx) => {
             const createdMenus = await Promise.all(
-                rows.map((r) =>
+                rows.map((r: any) =>
                     tx.menu_items.create({
                         data: {
                             name: r.name,

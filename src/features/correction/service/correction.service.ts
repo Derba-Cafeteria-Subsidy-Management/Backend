@@ -19,6 +19,7 @@ import type {
   MenuValueSnapshot,
   RejectCorrectionInput,
 } from '../types/correction.types.js';
+import { ulid } from 'ulid';
 
 const buildMenuSnapshot = async (
   menuItemId: string,
@@ -74,6 +75,7 @@ export const createCorrectionRequest = async (
 
   const correction = await prisma.correction_requests.create({
     data: {
+      id: ulid(),
       transactionId: input.transactionId,
       requestedById: context.requestedById,
       reason: input.reason,

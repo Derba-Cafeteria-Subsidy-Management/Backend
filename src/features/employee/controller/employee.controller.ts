@@ -1,7 +1,8 @@
 import { prisma } from "../../../libs/lib/prisma";
 import { getRequestContextFromRequest } from "../../auth/service/auth.service";
+import { getImportPreview, removeImportPreview } from "../../menu/helpers/import-cache";
 import { getSystemSettings } from "../../system-settings/helpers/system-settings.helper.ts/system-settings.helper";
-import { createEmployee, deactivateEmployee, fingerprintScan, getEmployeeById, getEmployees, updateEmployee } from "../service/employee.service";
+import { createEmployee, deactivateEmployee, fingerprintScan, getEmployeeById, getEmployees, previewEmployeeImport, updateEmployee } from "../service/employee.service";
 
 import type { Request, Response, NextFunction } from 'express';
 
@@ -167,4 +168,100 @@ export const fingerprintScanController =
         });
     };
 
+// import type { Request, Response } from "express";
+// import { prisma } from "../../../config/prisma.js";
+// import {
+//   getImportPreview,
+//   removeImportPreview,
+// } from "../helpers/import-preview.cache.js";
+
+export const confirmEmployeeImportController = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const { previewToken } = req.body;
+
+    if (!previewToken) {
+      return res.status(400).json({
+        success: false,
+        message: "previewToken is required",
+      });
+    }
+
+    const preview = getImportPreview(previewToken);
+
+    if (!preview) {
+      return res.status(400).json({
+        success: false,
+        message: "Preview expired or not found",
+      });
+    }
+
+    if (preview.type !== "EMPLOYEE") {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid preview token",
+      });
+    }
+
+    const rows = preview.rows;
+
+    const inserted = await prisma.$transaction(async (tx) => {
+      return Promise.all(
+        rows.map((row: any) =>
+          tx.employees.create({
+            data: {
+              Employee_number: row.EmployeeNumber,
+              full_name: row.fullName,
+              department: row.department,
+              fingerprint_id: row.fingerprintId,
+              photo: row.photo,
+            },
+          })
+        )
+      );
+    });
+
+    removeImportPreview(previewToken);
+
+    return res.status(201).json({
+      success: true,
+      message: "Employee import completed",
+      inserted: inserted.length,
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message: error.message ?? "Import failed",
+    });
+  }
+};
+
+export const importEmployeePreviewController = async (
+    req: Request,
+    res: Response
+) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({
+                success: false,
+                message: "Excel file is required",
+            });
+        }
+
+        const result = await previewEmployeeImport(req.file);
+
+        return res.status(200).json({
+            success: true,
+            data: result,
+        });
+
+    } catch (error: any) {
+        return res.status(500).json({
+            success: false,
+            message: error.message || "Preview failed",
+        });
+    }
+};
 

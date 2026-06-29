@@ -19,6 +19,7 @@ import {
   toDateOnlyString,
 } from '../../shared/helpers/date.helper.js';
 import { TransactionDetailResponse, CreateTransactionInput, CreateTransactionContext, TransactionListQuery, TransactionListItem } from '../types/transaction.type.js';
+import { ulid } from 'ulid';
 
 
 
@@ -113,6 +114,7 @@ export const createTransaction = async (
 
   const transaction = await prisma.transaction.create({
     data: {
+      id: ulid(),
       employeeId: input.employeeId,
       menu_item_id: input.menuItemId,
       menu_session: input.mealSession,
@@ -280,6 +282,7 @@ export const registerMealTransaction = async (
 
   const transaction = await prisma.transaction.create({
     data: {
+      id: ulid(),
       employeeId: input.employeeId,
       menu_item_id: input.menuItemId,
       menu_session: input.mealSession,

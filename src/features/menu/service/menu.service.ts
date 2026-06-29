@@ -9,12 +9,12 @@ import {
 import XLSX from "xlsx";
 
 import {
-    ImportMenuError,
-    ImportMenuRow
+  ImportMenuError,
+  ImportMenuRow
 } from "../types/menu.types";
 
 import {
-    saveImportPreview
+  saveImportPreview
 } from "../helpers/import-cache";
 import { createAuditLog } from '../../auth/service/audit.service.js';
 
@@ -25,54 +25,54 @@ export const getMenus = async (
   query?: string
 ) => {
 
-const menus = await prisma.menu_items.findMany({
-  where: {
-    ...(activeOnly && { status: 'ACTIVE' }),
-    ...(query && {
-      OR: [
-        { name: { contains: query, mode: 'insensitive' } },
-        { description: { contains: query, mode: 'insensitive' } }
-      ]
-    })
-  },
-  skip : (page - 1) * pageSize,
-  take : pageSize,
-  //search with query if provided
-  include: {
-    PriceHistory: {
-      orderBy: {
-        effctive_from: 'desc', // ⚠️ check spelling, should be `effective_from`
-      },
-      select: {
-        price: true,
-      },
-      take: 1,
+  const menus = await prisma.menu_items.findMany({
+    where: {
+      ...(activeOnly && { status: 'ACTIVE' }),
+      ...(query && {
+        OR: [
+          { name: { contains: query, mode: 'insensitive' } },
+          { description: { contains: query, mode: 'insensitive' } }
+        ]
+      })
     },
-  },
-  
-});
+    skip: (page - 1) * pageSize,
+    take: pageSize,
+    //search with query if provided
+    include: {
+      PriceHistory: {
+        orderBy: {
+          effctive_from: 'desc', // ⚠️ check spelling, should be `effective_from`
+        },
+        select: {
+          price: true,
+        },
+        take: 1,
+      },
+    },
 
-var totalCount = await prisma.menu_items.count({
-  where: {
-    ...(activeOnly && { status: 'ACTIVE' }),
-  },
-});
+  });
 
-return {
-  data: menus.map((menu) => ({
-    id: menu.id,
-    name: menu.name,
-    description: menu.description,
-    currentPrice: menu.PriceHistory[0]?.price ?? 0,
-    active: menu.status === 'ACTIVE',
-  })),
-  pagination: {
-    page,
-    pageSize,
-    totalCount,
-    totalPages: Math.ceil(totalCount / pageSize),
-  },
-};
+  var totalCount = await prisma.menu_items.count({
+    where: {
+      ...(activeOnly && { status: 'ACTIVE' }),
+    },
+  });
+
+  return {
+    data: menus.map((menu) => ({
+      id: menu.id,
+      name: menu.name,
+      description: menu.description,
+      currentPrice: menu.PriceHistory[0]?.price ?? 0,
+      active: menu.status === 'ACTIVE',
+    })),
+    pagination: {
+      page,
+      pageSize,
+      totalCount,
+      totalPages: Math.ceil(totalCount / pageSize),
+    },
+  };
 }
 
 
@@ -103,26 +103,26 @@ export const createMenu = async (
           menuItemId: menu.id,
           price: input.price,
           effectiveFrom,
-          effectiveTo: null,  
-          createdby:context.AdminId
-          
+          effectiveTo: null,
+          createdby: context.AdminId
+
         }
       });
 
-        await createAuditLog({
-    userId:  context.AdminId,
-    action: 'MENU_ITEM_CREATED',
-    entityType: 'Menu_items',
-    entityId:menu.id,
-    metadata: {
-      menuItemId:menu.id,
-      menuname:input.name,
-      effectiveFrom: effectiveFrom,
-      price: input.price
-    },
-    ipAddress: context.ipAddress,
-    userAgent: context.userAgent,
-  });
+      await createAuditLog({
+        userId: context.AdminId,
+        action: 'MENU_ITEM_CREATED',
+        entityType: 'Menu_items',
+        entityId: menu.id,
+        metadata: {
+          menuItemId: menu.id,
+          menuname: input.name,
+          effectiveFrom: effectiveFrom,
+          price: input.price
+        },
+        ipAddress: context.ipAddress,
+        userAgent: context.userAgent,
+      });
       return menu;
     }
   );
@@ -134,16 +134,16 @@ export const updateMenu = async (
   context: CreateMenuContext
 ) => {
 
-   await createAuditLog({
+  await createAuditLog({
     userId: context.AdminId,
     action: 'MENU_ITEM_UPDATED',
     entityType: 'Menu_items',
     entityId: id,
     metadata: {
-      menuItemId:id,
-  /*     menuname:input.name,
-      effectiveFrom: effectiveFrom,
-      price: input.price */
+      menuItemId: id,
+      /*     menuname:input.name,
+          effectiveFrom: effectiveFrom,
+          price: input.price */
     },
     ipAddress: context.ipAddress,
     userAgent: context.userAgent,
@@ -202,18 +202,18 @@ export const addPriceVersion = async (
     });
 
     await createAuditLog({
-    userId: context.AdminId,
-    action: 'MENU_ITEM_UPDATED',
-    entityType: 'Menu_items',
-    entityId: menuId,
-    metadata: {
-      menuItemId:menuId,
-      price: input.price,
-      effectiveFrom: input.effectiveFrom,
-    },
-    ipAddress: context.ipAddress,
-    userAgent: context.userAgent,
-  });
+      userId: context.AdminId,
+      action: 'MENU_ITEM_UPDATED',
+      entityType: 'Menu_items',
+      entityId: menuId,
+      metadata: {
+        menuItemId: menuId,
+        price: input.price,
+        effectiveFrom: input.effectiveFrom,
+      },
+      ipAddress: context.ipAddress,
+      userAgent: context.userAgent,
+    });
 
     // Insert new price version
     return tx.price_history.create({
@@ -239,7 +239,7 @@ export const addPriceVersion = async (
 };
 
 
-  export const getPriceHistory = async (menuId: string) => {
+export const getPriceHistory = async (menuId: string) => {
   const priceHistories = await prisma.price_history.findMany({
     where: { menuItemId: menuId },
     orderBy: { effctive_from: 'desc' },
@@ -269,154 +269,147 @@ export const addPriceVersion = async (
 
 
 export const previewMenuImport =
-async (
+  async (
     file: Express.Multer.File
-) => {
+  ) => {
 
     const workbook =
-        XLSX.read(file.buffer, {
-            type: "buffer"
-        });
+      XLSX.read(file.buffer, {
+        type: "buffer"
+      });
 
-  // to make sure workbook has at least one sheet index not to be undefined
-  if (workbook.SheetNames.length === 0) {
-    throw new Error(
-      "Excel file is empty"
-    );
-  }
+    // to make sure workbook has at least one sheet index not to be undefined
+    if (workbook.SheetNames.length === 0) {
+      throw new Error(
+        "Excel file is empty"
+      );
+    }
 
-  // Type 'undefined' cannot be used as an index type.
-  if (workbook.SheetNames[0] === undefined) {
-    throw new Error(
-      "Excel file is empty"
-    );
-  }
+    // Type 'undefined' cannot be used as an index type.
+    if (workbook.SheetNames[0] === undefined) {
+      throw new Error(
+        "Excel file is empty"
+      );
+    }
 
     const sheet =
-        workbook.Sheets[
-            workbook.SheetNames[0]
-        ];
+      workbook.Sheets[
+      workbook.SheetNames[0]
+      ];
 
-        if (!sheet) {
-            throw new Error(
-                "Excel file is empty"
-            );
-        }
+    if (!sheet) {
+      throw new Error(
+        "Excel file is empty"
+      );
+    }
 
     const data =
-        XLSX.utils.sheet_to_json<any>(
-            sheet
-        );
+      XLSX.utils.sheet_to_json<any>(
+        sheet
+      );
 
     const validRows: ImportMenuRow[] = [];
 
     const errors: ImportMenuError[] = [];
 
     for (
-        let i = 0;
-        i < data.length;
-        i++
+      let i = 0;
+      i < data.length;
+      i++
     ) {
 
-        const row =
-            data[i];
+      const row =
+        data[i];
 
-        const excelRow =
-            i + 2;
+      const excelRow =
+        i + 2;
 
-        if (!row.Name) {
+      if (!row.Name) {
 
-            errors.push({
-                row: excelRow,
-                field: "Name",
-                message: "Required"
-            });
+        errors.push({
+          row: excelRow,
+          field: "Name",
+          message: "Required"
+        });
 
-            continue;
-        }
+        continue;
+      }
 
-        if (
-            row.Price == null ||
-            Number(row.Price) <= 0
-        ) {
+      if (
+        row.Price == null ||
+        Number(row.Price) <= 0
+      ) {
 
-            errors.push({
+        errors.push({
 
-                row: excelRow,
+          row: excelRow,
 
-                field: "Price",
+          field: "Price",
 
-                message:
-                    "Must be greater than zero"
-
-            });
-
-            continue;
-        }
-
-        const exists =
-            await prisma.menu_items.findFirst({
-
-                where: {
-
-                    name: row.Name
-
-                }
-
-            });
-
-        if (exists) {
-
-            errors.push({
-
-                row: excelRow,
-
-                field: "Name",
-
-                message:
-                    "Menu already exists"
-
-            });
-
-            continue;
-        }
-
-        validRows.push({
-
-            row: excelRow,
-
-            name: row.Name,
-
-            description:
-                row.Description ? row.Description : '',
-
-            price:
-                Number(row.Price),
-
-            effectiveFrom: row.EffectiveFrom ? new Date(row.EffectiveFrom) : new Date()
-               
-               
+          message:
+            "Must be greater than zero"
 
         });
 
+        continue;
+      }
+
+      const exists =
+        await prisma.menu_items.findFirst({
+
+          where: {
+
+            name: row.Name
+
+          }
+
+        });
+
+      if (exists) {
+
+        errors.push({
+
+          row: excelRow,
+
+          field: "Name",
+
+          message:
+            "Menu already exists"
+
+        });
+
+        continue;
+      }
+
+      validRows.push({
+
+        row: excelRow,
+
+        name: row.Name,
+
+        description:
+          row.Description ? row.Description : '',
+
+        price:
+          Number(row.Price),
+
+        effectiveFrom: row.EffectiveFrom ? new Date(row.EffectiveFrom) : new Date()
+
+
+
+      });
+
     }
 
-    const previewToken =
-        saveImportPreview(
-            validRows
-        );
+    const previewToken = saveImportPreview(
+      validRows,
+      "MENU"
+    );
 
     return {
-
-        previewToken,
-
-        totalRows:
-            data.length,
-
-        validRows,
-
-        errors
-
+      previewToken,
+      totalRows: data.length,
+      validRows,
+      errors,
     };
-
-};
+  };

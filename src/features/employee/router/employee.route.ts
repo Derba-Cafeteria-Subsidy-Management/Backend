@@ -3,7 +3,8 @@ import { Router } from 'express';
 import { seedSuperAdmin } from '../../../scripts/seed-super-admin.js';
 import { authenticate } from '../../auth/middleware/authenticate.middleware.js';
 import { authorize } from '../../auth/middleware/authorize.middleware.js';
-import { createEmployeeController, deactivateEmployeeController, fingerprintScanController, getEmployeeByIdController, getEmployeesController, updateEmployeeController } from '../controller/employee.controller.js';
+import { confirmEmployeeImportController, createEmployeeController, deactivateEmployeeController, fingerprintScanController, getEmployeeByIdController, getEmployeesController, importEmployeePreviewController, updateEmployeeController } from '../controller/employee.controller.js';
+import { uploadExcel } from '../../shared/helpers/upload.middleware.js';
 
 export const employeeRouter = Router();
 
@@ -276,3 +277,64 @@ employeeRouter.post('/fingerprint', authenticate, authorize('CASHIER'), fingerpr
 
 
 
+/**
+ * @openapi
+ * /api/employees/import/preview:
+ *   post:
+ *     summary: Upload Excel file and preview employee import
+ *     tags:
+ *       - Employees
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - file
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Preview generated successfully
+ */
+employeeRouter.post(
+    "/import/preview",
+    uploadExcel.single("file"),
+    authenticate, 
+    authorize('ADMIN'),
+    importEmployeePreviewController
+);
+
+/**
+ * @openapi
+ * /api/employees/import/confirm:
+ *   post:
+ *     summary: Confirm employee import using preview token
+ *     tags:
+ *       - Employees
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               previewToken:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: Import completed successfully
+ */
+employeeRouter.post(
+    "/import/confirm",
+    authenticate,
+    authorize('ADMIN'),
+    confirmEmployeeImportController
+);

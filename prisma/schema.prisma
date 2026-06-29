@@ -78,6 +78,7 @@ model User {
   priceHistoryCreatedBy          price_history[]        @relation("PriceHistoryCreatedBy")
 
   @@map("users")
+  @@index([role, status])
   systemSettings system_settings[]
 }
 
@@ -134,6 +135,7 @@ model menu_items {
   transactions Transaction[]
 
   @@map("menu_items")
+  @@index([status])
 }
 
 model price_history {
@@ -149,6 +151,8 @@ model price_history {
   createdAt DateTime @default(now())
 
   @@map("price_history")
+  @@index([menuItemId, effctive_from])
+  @@index([menuItemId, effective_to])
 }
 
 model employees {
@@ -165,8 +169,9 @@ model employees {
   Transactions Transaction[]
 
   @@map("employees")
-  @@index([fingerprint_id])
   @@index([status])
+  @@index([department, full_name])
+  @@index([full_name])
 }
 
 enum EmployeeStatus {
@@ -182,7 +187,7 @@ enum mealType {
 }
 
 model Transaction {
-  id              String   @id @default(uuid())
+  id String @id
   employeeId      String
   employee        employees @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   menu_item_id    String
@@ -202,12 +207,15 @@ model Transaction {
 
   @@unique([employeeId, menu_session, transactionDate], name: "unique_meal_per_day")
   @@index([transactionDate])
+  @@index([cashierId, transactionDate])
   @@index([cashierId])
+  @@index([employeeId, transactionDate])
+  @@index([transactionDate, menu_session])
   @@map("transactions")
 }
 
 model correction_requests {
-  id            String                  @id @default(uuid())
+  id String @id
   transactionId String
   transaction   Transaction             @relation(fields: [transactionId], references: [id], onDelete: Cascade)
   requestedById String
@@ -230,6 +238,8 @@ model correction_requests {
 
   @@index([status])
   @@index([createdAt])
+  @@index([status, transactionId])
+  @@index([status, createdAt])
   @@map("correction_requests")
 }
 
@@ -249,10 +259,12 @@ model Subsidy_config {
   updatedAt      DateTime  @updatedAt
 
   @@map("subsidy_config")
+  @@index([effective_from])
+  @@index([effective_to])
 }
 
 model offline_sync_records {
-  id            String       @id @default(uuid())
+  id String @id
   localId       String       @unique
   stationId     String
   transactionId String?
@@ -264,6 +276,11 @@ model offline_sync_records {
   createdAt     DateTime     @default(now())
 
   @@index([stationId])
+  @@index([cashierId])
+
+  @@index([syncStatus])
+
+  @@index([createdAt])
   @@map("offline_sync_records")
 }
 
@@ -283,7 +300,7 @@ model system_settings {
 }
 
 model AuditLog {
-  id         String      @id @default(uuid())
+  id String @id
   userId     String?
   user       User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
   action     AuditAction
@@ -297,5 +314,6 @@ model AuditLog {
   @@index([userId])
   @@index([action])
   @@index([createdAt])
+  @@index([entityType, entityId])
   @@map("audit_logs")
 }

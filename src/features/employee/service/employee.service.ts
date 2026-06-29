@@ -1,7 +1,9 @@
 import { prisma } from "../../../libs/lib/prisma.js";
 import { createAuditLog } from "../../auth/service/audit.service.js";
+import { saveImportPreview } from "../../menu/helpers/import-cache.js";
 import { getMealsToday } from "../Helper/getmeal.helper.js";
-import { CreateEmployeeContext } from "../types/employee.types.js";
+import { CreateEmployeeContext, ImportEmployeeError, ImportEmployeeRow } from "../types/employee.types.js";
+import XLSX from "xlsx";
 
 export const getEmployees = async (
     employeeNumber?: string,
@@ -371,3 +373,138 @@ export const fingerprintScan =
         };
     };
 
+export const previewEmployeeImport =
+async (
+    file: Express.Multer.File
+) => {
+
+    const workbook =
+        XLSX.read(file.buffer, {
+            type: "buffer"
+        });
+
+  // to make sure workbook has at least one sheet index not to be undefined
+  if (workbook.SheetNames.length === 0) {
+    throw new Error(
+      "Excel file is empty"
+    );
+  }
+
+  // Type 'undefined' cannot be used as an index type.
+  if (workbook.SheetNames[0] === undefined) {
+    throw new Error(
+      "Excel file is empty"
+    );
+  }
+
+    const sheet =
+        workbook.Sheets[
+            workbook.SheetNames[0]
+        ];
+
+        if (!sheet) {
+            throw new Error(
+                "Excel file is empty"
+            );
+        }
+
+    const data =
+        XLSX.utils.sheet_to_json<any>(
+            sheet
+        );
+
+    const validRows: ImportEmployeeRow[] = [];
+
+    const errors: ImportEmployeeError[] = [];
+
+    for (
+        let i = 0;
+        i < data.length;
+        i++
+    ) {
+
+        const row =
+            data[i];
+
+        const excelRow =
+            i + 2;
+
+        if (!row.fullName || !row.EmployeeNumber  || !row.fingerprintId) {
+
+            errors.push({
+                row: excelRow,
+                field: `${!row.fullName ? 'fullName' : !row.EmployeeNumber ? 'EmployeeNumber' : 'fingerprintId'}`,
+                message: "Required"
+            });
+
+            continue;
+        }
+
+
+        const exists =
+            await prisma.employees.findFirst({
+
+                where: {
+
+                    Employee_number:
+                        row.EmployeeNumber,
+
+                }
+
+            });
+
+        if (exists) {
+
+            errors.push({
+
+                row: excelRow,
+
+                field: "EmployeeNumber",
+
+                message:
+                    "Employee already exists"
+
+            });
+
+            continue;
+        }
+
+        validRows.push({
+
+            row: excelRow,
+
+            EmployeeNumber: row.EmployeeNumber,
+
+            fullName: row.fullName,
+
+            department: row.department,
+
+            fingerprintId: row.fingerprintId,
+
+            photo: row.photo
+
+
+        });
+
+    }
+
+    const previewToken =
+        saveImportPreview(
+           validRows,
+            "EMPLOYEE"
+        );
+
+    return {
+
+        previewToken,
+
+        totalRows:
+            data.length,
+
+        validRows,
+
+        errors
+
+    };
+
+};

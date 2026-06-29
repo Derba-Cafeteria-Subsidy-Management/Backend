@@ -1,3 +1,4 @@
+import { ulid } from 'ulid';
 import { prisma } from '../../../libs/lib/prisma.js';
 import { createAuditLog } from '../../auth/service/audit.service.js';
 import { registerMealTransaction } from '../../Transaction/service/transaction.service.js';
@@ -35,6 +36,7 @@ export const processOfflineBatch = async (
     if (!employee || employee.status !== 'ACTIVE') {
       await prisma.offline_sync_records.create({
         data: {
+          id: ulid(),
           localId: item.localId,
           stationId: input.stationId,
           cashierId: context.cashierId,
@@ -67,6 +69,7 @@ export const processOfflineBatch = async (
     if (outcome.status === 'DUPLICATE_SKIPPED') {
       await prisma.offline_sync_records.create({
         data: {
+          id: ulid(),
           localId: item.localId,
           stationId: input.stationId,
           transactionId: outcome.transactionId,
@@ -87,6 +90,7 @@ export const processOfflineBatch = async (
 
     await prisma.offline_sync_records.create({
       data: {
+        id: ulid(),
         localId: item.localId,
         stationId: input.stationId,
         transactionId: outcome.transactionId,
