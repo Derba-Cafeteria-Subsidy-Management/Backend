@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { getAuthenticationSettings, updateAuthenticationSettings } from "../service/system-settings.service.js";
 import { updateAuthenticationSettingsSchema } from "../validation/system-settings.validation";
+import { getRequestContextFromRequest } from "../../auth/service/auth.service.js";
 
 
 export const getAuthenticationSettingsHandler = async (
@@ -30,9 +31,15 @@ export const updateAuthenticationSettingsHandler = async (
   try {
     const input = updateAuthenticationSettingsSchema.parse(req.body);
 
+    const context = getRequestContextFromRequest(req);
+
     const data = await updateAuthenticationSettings(
       input,
-      req.user!.userId
+      req.user!.userId,
+      {
+        ...context
+      }
+     
     );
 
     res.status(200).json({

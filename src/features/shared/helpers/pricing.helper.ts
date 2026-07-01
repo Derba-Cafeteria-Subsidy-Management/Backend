@@ -1,6 +1,7 @@
 import { prisma } from '../../../libs/lib/prisma.js';
 import { NotFoundError, ValidationError } from '../../../errors/errors/apperror.js';
 import { startOfDay } from './date.helper.js';
+import { getSubsidyCache, setSubsidyCache } from '../cache/system.cache.js';
 
 export interface PriceShares {
   menuPrice: number;
@@ -41,20 +42,36 @@ export const getActiveMenuPrice = async (
   return priceRecord.price;
 };
 
-export const getActiveSubsidyConfig = async (asOf: Date = new Date()) => {
-  const referenceDate = startOfDay(asOf);
 
-  const config = await prisma.subsidy_config.findFirst({
-    where: {
-       effective_to: null,
+
+export const getActiveSubsidyConfig = async () => {
+
+    const cached = getSubsidyCache();
+
+    if (cached) {
+        return cached;
     }
-  });
 
-  if (!config) {
-    throw new ValidationError('No active subsidy configuration found');
-  }
+    const subsidy = await prisma.subsidy_config.findFirst({
 
-  return config;
+        where: {
+            effective_to: null,
+        },
+
+        orderBy: {
+            effective_from: "desc",
+        },
+
+    });
+
+    if (!subsidy) {
+        throw new Error("Subsidy configuration not found");
+    }
+
+    setSubsidyCache(subsidy);
+
+    return subsidy;
+
 };
 
 export const calculateShares = (
@@ -77,7 +94,7 @@ export const getPriceSharesForMenuItem = async (
   asOf: Date = new Date()
 ): Promise<PriceShares> => {
   const menuPrice = await getActiveMenuPrice(menuItemId, asOf);
-  const subsidy = await getActiveSubsidyConfig(asOf);
+  const subsidy = await getActiveSubsidyConfig();
 
   return calculateShares(menuPrice, subsidy.employee_share, subsidy.company_share);
 };
