@@ -170,6 +170,7 @@ export const inviteUser = async (
   });
 
   return {
+    token: rawToken,
     userId: result.user.id,
     email: result.user.email,
     role: result.user.role,
@@ -308,9 +309,16 @@ export const login = async (
     userAgent: context.userAgent,
   });
 
+  // refresh token 
+
+
+
+
+
   return {
     user: toSafeUser(updatedUser),
     tokens,
+    
   };
 };
 

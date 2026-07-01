@@ -12,6 +12,10 @@ import {
 import { getImportPreview, removeImportPreview } from '../helpers/import-cache';
 import { prisma } from '../../../libs/lib/prisma';
 import { getRequestContextFromRequest } from '../../auth/service/auth.service';
+import { bumpMenuCacheVersion } from '../helpers/menu-cache.helper';
+import { ImportMenuRow } from '../types/menu.types';
+
+import { randomUUID } from "crypto";
 
 
 export const getMenu =
@@ -66,7 +70,7 @@ export const createMenus =
                 req.body,
                 {
                     ...context,
-                    AdminId:req.user!.userId
+                    AdminId: req.user!.userId
                 }
             );
 
@@ -127,10 +131,10 @@ export const addPriceVersions =
                 req.body,
                 {
                     ...context,
-                    AdminId:req.user!.userId
+                    AdminId: req.user!.userId
 
                 }
-                
+
             );
 
         res.status(201).json({
@@ -187,6 +191,7 @@ export const importMenuPreviewController = async (
     }
 };
 
+
 export const confirmMenuImportController = async (
     req: Request,
     res: Response
@@ -219,51 +224,178 @@ export const confirmMenuImportController = async (
 
         const rows = preview.rows;
 
-        if (!rows || rows.length === 0) {
+        if (!rows.length) {
             return res.status(400).json({
                 success: false,
                 message: "No valid rows to import",
             });
         }
 
-        const result = await prisma.$transaction(async (tx) => {
-            const createdMenus = await Promise.all(
-                rows.map((r: any) =>
-                    tx.menu_items.create({
-                        data: {
-                            name: r.name,
-                            description: r.description ?? '',
-                            PriceHistory: {
-                                create: {
-                                    price: r.price,
-                                    effctive_from: r.effectiveFrom ?? new Date(),
-                                    effective_to: null,
-                                    createdBy: req.user!.userId,
-                                },
-                            },
-                        },
-                        include: { PriceHistory: true },
-                    })
-                )
-            );
+        const menuData = [];
+        const historyData = [];
 
-            return createdMenus;
-        });
+        for (const row of rows as ImportMenuRow[]) {
+
+            const id = randomUUID();
+
+            menuData.push({
+                id,
+                name: row.name,
+                description: row.description ?? "",
+            });
+
+            historyData.push({
+                menuItemId: id,
+                price: row.price,
+                effctive_from: row.effectiveFrom ?? new Date(),
+                effective_to: null,
+                createdBy: req.user!.userId,
+            });
+
+        }
 
 
+        await prisma.$transaction([
+
+            prisma.menu_items.createMany({
+                data: menuData
+            }),
+
+            prisma.price_history.createMany({
+                data: historyData
+            })
+
+        ]);
+
+        /*   await prisma.$transaction(
+              async (tx) => { */
+
+        // for (const row of rows as ImportMenuRow[]) {
+
+        //     await prisma.menu_items.create({
+        //         data: {
+        //             name: row.name,
+        //             description: row.description ?? "",
+
+        //             PriceHistory: {
+        //                 create: {
+        //                     price: row.price,
+        //                     effctive_from:
+        //                         row.effectiveFrom ?? new Date(),
+        //                     effective_to: null,
+        //                     createdBy: req.user!.userId,
+        //                 },
+        //             },
+        //         },
+        //     });
+
+        // }
+
+
+        /*       {
+                  timeout: 30000, // 30 seconds
+              }
+          ); */
 
         removeImportPreview(previewToken);
 
+        await bumpMenuCacheVersion();
+
         return res.status(201).json({
             success: true,
-            message: "Menu import completed",
-            inserted: result.length,
+            message: "Menu import completed successfully.",
+            inserted: rows.length,
         });
 
     } catch (error: any) {
+
         return res.status(500).json({
             success: false,
             message: error.message || "Import failed",
         });
+
     }
 };
+
+// export const confirmMenuImportController = async (
+//     req: Request,
+//     res: Response
+// ) => {
+//     try {
+//         const { previewToken } = req.body;
+
+//         if (!previewToken) {
+//             return res.status(400).json({
+//                 success: false,
+//                 message: "previewToken is required",
+//             });
+//         }
+
+//         const preview = getImportPreview(previewToken);
+
+//         if (!preview) {
+//             return res.status(400).json({
+//                 success: false,
+//                 message: "Preview expired or not found",
+//             });
+//         }
+
+//         if (preview.type !== "MENU") {
+//             return res.status(400).json({
+//                 success: false,
+//                 message: "Invalid preview type",
+//             });
+//         }
+
+//         const rows = preview.rows;
+
+//         if (!rows || rows.length === 0) {
+//             return res.status(400).json({
+//                 success: false,
+//                 message: "No valid rows to import",
+//             });
+//         }
+
+//         const result = await prisma.$transaction(async (tx) => {
+//             const createdMenus = await Promise.all(
+//                 rows.map((r: any) =>
+//                     tx.menu_items.create({
+//                         data: {
+//                             name: r.name,
+//                             description: r.description ?? '',
+//                             PriceHistory: {
+//                                 create: {
+//                                     price: r.price,
+//                                     effctive_from: r.effectiveFrom ?? new Date(),
+//                                     effective_to: null,
+//                                     createdBy: req.user!.userId,
+//                                 },
+//                             },
+//                         },
+//                         include: { PriceHistory: true },
+//                     })
+//                 )
+//             );
+
+//             return createdMenus;
+//         });
+
+
+
+//         removeImportPreview(previewToken);
+
+//          await bumpMenuCacheVersion();
+
+//         return res.status(201).json({
+//             success: true,
+//             message: "Menu import completed",
+//             inserted: result.length,
+//         });
+
+//     } catch (error: any) {
+//         return res.status(500).json({
+//             success: false,
+//             message: error.message || "Import failed",
+//         });
+//     }
+// };

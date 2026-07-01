@@ -63,6 +63,7 @@ export const loginHandler = async (
     sendSuccess(res, 'Login successful', {
       user,
       accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
     });
   } catch (error) {
     next(error);
