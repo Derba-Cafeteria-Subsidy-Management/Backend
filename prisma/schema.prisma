@@ -44,6 +44,7 @@ enum AuditAction {
   update_employee
   deactivate_employee
   activate_employee
+  EMPLOYEE_DELETED
   create_correction_request
   approve_correction
   reject_correction
@@ -51,6 +52,15 @@ enum AuditAction {
   offline_sync_batch
   SYSTEM_SETTINGS_UPDATED
 }
+
+
+enum FoodType {
+  BREAKFAST
+  LUNCH
+  DINNER
+  Drink
+}
+
 
 model User {
   id           String     @id @default(uuid())
@@ -125,9 +135,10 @@ model PasswordResetToken {
 model menu_items {
   id          String  @id @default(uuid())
   name        String
-  description String?
 
   status MenuItemStatus @default(ACTIVE)
+
+  mealtype     FoodType 
 
   createdAt    DateTime        @default(now())
   updatedAt    DateTime        @updatedAt
@@ -155,23 +166,91 @@ model price_history {
   @@index([menuItemId, effective_to])
 }
 
-model employees {
-  id              String         @id @default(uuid())
-  Employee_number String         @unique
-  photo           String
-  full_name       String
-  department      String
-  fingerprint_id  String         @unique
-  status          EmployeeStatus @default(ACTIVE)
-  created_at      DateTime       @default(now())
 
-  updated_at   DateTime      @updatedAt
-  Transactions Transaction[]
+model Device {
 
-  @@map("employees")
-  @@index([status])
-  @@index([department, full_name])
-  @@index([full_name])
+  id          String @id @default(cuid())
+
+  code        String @unique
+
+  name        String
+
+  provider    DeviceProvider
+
+  ipAddress   String?
+
+  location    String?
+
+  status      DeviceStatus
+
+  createdAt   DateTime @default(now())
+
+  updatedAt   DateTime @updatedAt
+
+  mappings    BiometricMapping[]
+
+  scanLogs    ScanLog[]
+  @@map("devices")
+}
+
+
+
+
+model BiometricMapping {
+
+  id String @id @default(cuid())
+
+  employeeId String
+
+  deviceId String
+
+  deviceUserId String
+
+  employee employees @relation(fields:[employeeId],references:[id])
+
+  device Device @relation(fields:[deviceId],references:[id])
+
+  @@unique([deviceId,deviceUserId])
+  @@map("biometric_mappings")
+}
+
+model ScanLog {
+
+  id String @id @default(cuid())
+
+  deviceId String
+
+  employeeId String?
+
+  verified Boolean
+
+  payload Json?
+
+  scannedAt DateTime
+
+  device Device @relation(fields:[deviceId],references:[id])
+  @@map("scan_logs")
+}
+
+
+enum DeviceProvider {
+
+    MOCK
+
+    ZKTECO
+
+    SUPREMA
+
+}
+
+enum DeviceStatus {
+
+    ONLINE
+
+    OFFLINE
+
+    DISABLED
+
 }
 
 enum EmployeeStatus {
@@ -184,6 +263,28 @@ enum mealType {
   BREAKFAST
   LUNCH
   DINNER
+}
+
+
+
+
+model employees {
+  id              String         @id @default(uuid())
+  Employee_number String         @unique
+  photo           String?
+  full_name       String
+  fingerprint_id  String?         @unique 
+  status          EmployeeStatus @default(ACTIVE)
+  created_at      DateTime       @default(now())
+
+  updated_at   DateTime      @updatedAt
+  Transactions Transaction[]
+
+  @@map("employees")
+  @@index([status])
+  @@index([full_name])
+  biometricMappings BiometricMapping[]
+  employeeDailyMealStatuses employee_daily_meal_status[]
 }
 
 model Transaction {
@@ -212,6 +313,26 @@ model Transaction {
   @@index([employeeId, transactionDate])
   @@index([transactionDate, menu_session])
   @@map("transactions")
+}
+
+
+model employee_daily_meal_status {
+  id           String   @id @default(cuid())
+  employeeId   String
+  date         DateTime
+
+  breakfast    Boolean  @default(false)
+  lunch        Boolean  @default(false)
+  dinner       Boolean  @default(false)
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  employee     employees @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, date])   // 🔥 prevents duplicates per day
+  @@index([date])
+  @@index([employeeId, date])
 }
 
 model correction_requests {

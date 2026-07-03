@@ -13,7 +13,8 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate:prod": "prisma migrate deploy",
     "postinstall": "prisma generate",
-    "prisma:reset": "prisma migrate reset --force"
+    "prisma:reset": "prisma migrate reset --force",
+    "prisma:migrate:dev": "prisma migrate dev"
   },
   "repository": {
     "type": "git",
