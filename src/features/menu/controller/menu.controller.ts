@@ -5,6 +5,7 @@ import {
     getMenus,
     createMenu,
     updateMenu,
+    deleteMenu,
     addPriceVersion,
     getPriceHistory,
     previewMenuImport
@@ -110,6 +111,33 @@ export const updateMenus =
                 updatedAt:
                     menu.updatedAt
             }
+        });
+    };
+
+export const deleteMenus =
+    async (req: Request, res: Response) => {
+
+        if (!req.params.id || Array.isArray(req.params.id)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Menu ID is required'
+            });
+        }
+
+        const context = getRequestContextFromRequest(req);
+
+        const data = await deleteMenu(
+            req.params.id,
+            {
+                ...context,
+                AdminId: req.user!.userId
+            }
+        );
+
+        res.status(200).json({
+            success: true,
+            message: 'Menu item deleted successfully',
+            data
         });
     };
 
@@ -241,7 +269,7 @@ export const confirmMenuImportController = async (
             menuData.push({
                 id,
                 name: row.name,
-                description: row.description ?? "",
+                mealtype: row.mealtype,
             });
 
             historyData.push({

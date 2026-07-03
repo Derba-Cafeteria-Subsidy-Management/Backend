@@ -3,8 +3,10 @@ import { Router } from 'express';
 import { seedSuperAdmin } from '../../../scripts/seed-super-admin.js';
 import { authenticate } from '../../auth/middleware/authenticate.middleware.js';
 import { authorize } from '../../auth/middleware/authorize.middleware.js';
-import { addPriceVersions, confirmMenuImportController, createMenus, getActiveMenu, getMenu, getPriceHistorys, importMenuPreviewController, updateMenus } from '../controller/menu.controller.js';
+import { addPriceVersions, confirmMenuImportController, createMenus, deleteMenus, getActiveMenu, getMenu, getPriceHistorys, importMenuPreviewController, updateMenus } from '../controller/menu.controller.js';
 import { uploadExcel } from '../../shared/helpers/upload.middleware.js';
+import { validate } from '../../auth/middleware/validate.middleware.js';
+import { CreateMenuInput, CreatePriceVersionInput, UpdateMenuInput } from '../validation/menu.validation.js';
 
 export const menuRouter = Router();
 
@@ -39,7 +41,7 @@ export const menuRouter = Router();
  *         name: query
  *         schema:
  *           type: string
- *         description: Search by menu name or description.
+ *         description: Search by menu name or meal type [BREAKFAST, LUNCH, DINNER, DRINK].
  *     responses:
  *       200:
  *         description: Menu items retrieved successfully.
@@ -82,7 +84,7 @@ menuRouter.get(
  *         name: query
  *         schema:
  *           type: string
- *         description: Search by menu name or description.
+ *         description: Search by menu name or meal type [BREAKFAST, LUNCH, DINNER, DRINK].
  *     responses:
  *       200:
  *         description: Menu items retrieved successfully.
@@ -118,20 +120,17 @@ menuRouter.get(
  *             required:
  *               - name
  *               - price
+ *               - mealtype
  *             properties:
  *               name:
  *                 type: string
  *                 example: Tibs
- *               description:
- *                 type: string
- *                 example: Beef cooked with onions and spices.
+ *               mealtype:
+ *                type: string
+ *                enum: [BREAKFAST, LUNCH, DINNER, DRINK]
  *               price:
  *                 type: number
  *                 example: 120
- *               effectiveFrom:
- *                 type: string
- *                 format: date
- *                 example: "2026-07-01"
  *     responses:
  *       201:
  *         description: Menu item created successfully.
@@ -148,7 +147,7 @@ menuRouter.post(
     '/',
     authenticate,
     authorize('ADMIN'),
-    //   validate(acceptInvitationSchema),
+    validate(CreateMenuInput),
     createMenus
 );
 
@@ -179,8 +178,9 @@ menuRouter.post(
  *             properties:
  *               name:
  *                 type: string
- *               description:
- *                 type: string
+ *               mealtype:
+ *                type: string
+ *                enum: [BREAKFAST, LUNCH, DINNER, DRINK]
  *               active:
  *                 type: boolean
  *     responses:
@@ -200,7 +200,15 @@ menuRouter.put(
     authenticate,
     authorize('ADMIN'),
     //   validate(acceptInvitationSchema),
+    validate(UpdateMenuInput),
     updateMenus
+);
+
+menuRouter.delete(
+    '/:id',
+    authenticate,
+    authorize('ADMIN'),
+    deleteMenus
 );
 
 
@@ -251,7 +259,7 @@ menuRouter.put(
  *       404:
  *         description: Menu item not found.
  */
-menuRouter.post('/:id/price', authenticate, authorize('ADMIN'), addPriceVersions);
+menuRouter.post('/:id/price', authenticate, authorize('ADMIN'), validate(CreatePriceVersionInput), addPriceVersions);
 
 /**
  * @openapi
@@ -313,7 +321,7 @@ menuRouter.get('/:id/price-history', authenticate, authorize('ADMIN'), getPriceH
 menuRouter.post(
     "/import/preview",
     uploadExcel.single("file"),
-    authenticate, 
+    authenticate,
     authorize('ADMIN'),
     importMenuPreviewController
 );

@@ -17,10 +17,61 @@ import {
   saveImportPreview
 } from "../helpers/import-cache";
 import { createAuditLog } from '../../auth/service/audit.service.js';
-import { buildMenuListKey, buildPriceHistoryKey } from '../helpers/menu-cache.helper.js';
+import { buildMenuKey, buildMenuListKey, buildPriceHistoryKey } from '../helpers/menu-cache.helper.js';
 import { cacheGet, cacheSet } from '../../../libs/lib/cache.js';
 import { invalidateMenuCache } from '../helpers/cache-Invalidation.helper.js';
-import { Prisma } from "@prisma/client";
+import { FoodType, mealType, Prisma } from "@prisma/client";
+import { NotFoundError } from '../../../errors/errors/apperror.js';
+
+
+
+
+export const getMenuById = async (
+    menuId: string
+) => {
+
+    const cacheKey =
+        buildMenuKey(menuId);
+
+    const cached =
+        await cacheGet<any>(cacheKey);
+
+    if(cached){
+
+        return cached;
+
+    }
+
+    const menu =
+        await prisma.menu_items.findUnique({
+
+            where:{
+                id:menuId
+            },
+
+            select:{
+                id:true,
+                name:true,
+                status:true
+            }
+
+        });
+
+    if(!menu){
+
+        throw new NotFoundError("Menu not found");
+
+    }
+
+    await cacheSet(
+        cacheKey,
+        menu,
+        600
+    );
+
+    return menu;
+
+}
 
 
 export const getMenus = async (
@@ -48,21 +99,24 @@ export const getMenus = async (
   }
 
   if (query) {
-    where.OR = [
-      {
-        name: {
-          contains: query,
-          mode: Prisma.QueryMode.insensitive,
-        },
-      },
-      {
-        description: {
-          contains: query,
-          mode: Prisma.QueryMode.insensitive,
-        },
-      },
-    ];
+    const mealType = query.toUpperCase();
+
+    if (Object.values(FoodType).includes(mealType as FoodType)) {
+      // Query is a valid FoodType → filter by mealtype
+      where.mealtype = mealType as FoodType;
+    } else {
+      // Query is not a FoodType → filter by name/description
+      where.OR = [
+        {
+          name: {
+            contains: query,
+            mode: Prisma.QueryMode.insensitive,
+          },
+        }
+      ];
+    }
   }
+
 
 
   const [menus, totalCount] = await Promise.all([
@@ -95,7 +149,7 @@ export const getMenus = async (
     data: menus.map((menu) => ({
       id: menu.id,
       name: menu.name,
-      description: menu.description,
+      mealtype: menu.mealtype,
       currentPrice: menu.PriceHistory[0]?.price ?? 0,
       active: menu.status === "ACTIVE",
     })),
@@ -116,13 +170,10 @@ export const getMenus = async (
 
 export const createMenu = async (
   input: CreateMenuInput,
-
   context: CreateMenuContext
 ) => {
 
-  const effectiveFrom =
-    input.effectiveFrom ??
-    new Date();
+  const effectiveFrom = new Date();
 
   const menus = await prisma.$transaction(
     async (tx: any) => {
@@ -131,8 +182,7 @@ export const createMenu = async (
         await tx.menu_items.create({
           data: {
             name: input.name,
-            description:
-              input.description
+            mealtype: input.mealtype
           }
         });
 
@@ -140,30 +190,30 @@ export const createMenu = async (
         data: {
           menuItemId: menu.id,
           price: input.price,
-          effectiveFrom,
-          effectiveTo: null,
-          createdby: context.AdminId
-
-        }
-      });
-
-      await createAuditLog({
-        userId: context.AdminId,
-        action: 'MENU_ITEM_CREATED',
-        entityType: 'Menu_items',
-        entityId: menu.id,
-        metadata: {
-          menuItemId: menu.id,
-          menuname: input.name,
-          effectiveFrom: effectiveFrom,
-          price: input.price
+          effctive_from: effectiveFrom,
+          effective_to: null,
+          createdBy: context.AdminId,
         },
-        ipAddress: context.ipAddress,
-        userAgent: context.userAgent,
       });
+
       return menu;
     }
   );
+
+  await createAuditLog({
+    userId: context.AdminId,
+    action: 'MENU_ITEM_CREATED',
+    entityType: 'Menu_items',
+    entityId: menus.id,
+    metadata: {
+      menuItemId: menus.id,
+      menuname: input.name,
+      effectiveFrom: effectiveFrom,
+      price: input.price
+    },
+    ipAddress: context.ipAddress,
+    userAgent: context.userAgent,
+  });
 
   await invalidateMenuCache(menus.id);
 
@@ -203,9 +253,9 @@ export const updateMenu = async (
         name: input.name
       }),
 
-      ...(input.description && {
-        description:
-          input.description
+      ...(input.mealtype && {
+        mealtype:
+          input.mealtype
       }),
 
       ...(input.active !== undefined && {
@@ -222,69 +272,117 @@ export const updateMenu = async (
   return updated;
 };
 
+export const deleteMenu = async (
+  id: string,
+  context: CreateMenuContext
+) => {
+  const menu = await prisma.menu_items.findUnique({
+    where: { id },
+  });
+
+  if (!menu) {
+    throw new Error('Menu item not found');
+  }
+
+  await prisma.menu_items.delete({
+    where: { id },
+  });
+
+  await invalidateMenuCache(id);
+
+  await createAuditLog({
+    userId: context.AdminId,
+    action: 'MENU_ITEM_DELETED',
+    entityType: 'Menu_items',
+    entityId: id,
+    metadata: {
+      menuItemId: id,
+      menuName: menu.name,
+    },
+    ipAddress: context.ipAddress,
+    userAgent: context.userAgent,
+  });
+
+  return {
+    id: menu.id,
+  };
+};
+
 export const addPriceVersion = async (
   menuId: string,
   input: CreatePriceVersionInput,
   context: CreateMenuContext
 ) => {
-  const result = prisma.$transaction(async (tx) => {
-    // Find current active price
-    const currentPrice = await tx.price_history.findFirst({
-      where: {
-        menuItemId: menuId,
-        effective_to: null, // match schema field
-      },
-    });
 
-    if (!currentPrice) {
-      throw new Error("Current price not found");
-    }
+  const currentPrice = await prisma.price_history.findFirst({
+    where: {
+      menuItemId: menuId,
+      effective_to: null, // match schema field
+    },
+  });
 
-    // Close out the current price one day before new effectiveFrom
-    const previousDay = new Date(input.effectiveFrom);
-    previousDay.setDate(previousDay.getDate() - 1);
+  if (!currentPrice) {
+    throw new Error("Current price not found");
+  }
 
-    await tx.price_history.update({
-      where: { id: currentPrice.id },
-      data: { effective_to: previousDay },
-    });
+  // Close out the current price one day before new effectiveFrom
+  const previousDay = new Date(input.effectiveFrom);
+  previousDay.setDate(previousDay.getDate() - 1);
 
-    await createAuditLog({
-      userId: context.AdminId,
-      action: 'MENU_ITEM_UPDATED',
-      entityType: 'Menu_items',
-      entityId: menuId,
-      metadata: {
-        menuItemId: menuId,
-        price: input.price,
-        effectiveFrom: input.effectiveFrom,
-      },
-      ipAddress: context.ipAddress,
-      userAgent: context.userAgent,
-    });
 
-    // Insert new price version
-    return tx.price_history.create({
-      data: {
-        menuItemId: menuId,
-        price: input.price,
-        effctive_from: input.effectiveFrom, // match schema field
-        effective_to: null,
-        createdBy: context.AdminId,
-      },
-      include: {
-        menuItem: {
-          select: {
-            id: true,
-            name: true,
-            status: true,
-            createdAt: true,
+  const result = await prisma.$transaction(
+    async (tx: any) => {
+      // Find current active price
+
+      await tx.price_history.update({
+        where: { id: currentPrice.id },
+        data: { effective_to: previousDay },
+      });
+
+
+      // Insert new price version
+      return tx.price_history.create({
+        data: {
+          menuItemId: menuId,
+          price: input.price,
+          effctive_from: input.effectiveFrom, // match schema field
+          effective_to: null,
+          createdBy: context.AdminId,
+
+
+
+        },
+        include: {
+          menuItem: {
+            select: {
+              id: true,
+              name: true,
+              status: true,
+              createdAt: true,
+            },
           },
         },
-      },
+      });
+
     });
-  });
+
+
   await invalidateMenuCache(menuId);
+
+  await createAuditLog({
+    userId: context.AdminId,
+    action: 'MENU_ITEM_UPDATED',
+    entityType: 'Menu_items',
+    entityId: menuId,
+    metadata: {
+      menuItemId: menuId,
+      price: input.price,
+      effectiveFrom: input.effectiveFrom,
+    },
+    ipAddress: context.ipAddress,
+    userAgent: context.userAgent,
+  });
+
 
   return result;
 };
@@ -426,8 +524,10 @@ export const previewMenuImport = async (
     const excelRow = i + 2;
 
     const name = String(row.Name ?? "").trim();
-    const description = String(row.Description ?? "").trim();
+    const mealtype = row.MealType;
     const price = Number(row.Price);
+
+
 
     //--------------------------------------------------
     // Required
@@ -443,96 +543,133 @@ export const previewMenuImport = async (
       continue;
     }
 
-    //--------------------------------------------------
-    // Price validation
-    //--------------------------------------------------
-
-    if (!Number.isFinite(price) || price <= 0) {
+    if (!mealtype) {
       errors.push({
         row: excelRow,
-        field: "Price",
-        message: "Price must be greater than zero",
+        field: "MealType",
+        message: "Required",
       });
 
       continue;
     }
 
-    //--------------------------------------------------
-    // Duplicate inside Excel
-    //--------------------------------------------------
 
-    const lowerName = name.toLowerCase();
+    // mealtype validation with case insensitive check
+    const validMealTypes = Object.values(mealType).map((mt) => mt.toLowerCase());
 
-    if (seenNames.has(lowerName)) {
+    if (!validMealTypes.includes(String(mealtype).toLowerCase())) {
       errors.push({
         row: excelRow,
-        field: "Name",
-        message: "Duplicate menu in Excel",
+        field: "MealType",
+        message: `Invalid meal type. Must be one of: ${Object.values(mealType).join(", ")}`,
       });
 
-      continue;
-    }
 
-    seenNames.add(lowerName);
+      //--------------------------------------------------
+      // Price validation
+      //--------------------------------------------------
 
-    //--------------------------------------------------
-    // Already exists in database
-    //--------------------------------------------------
-
-    if (existingNames.has(lowerName)) {
-      errors.push({
-        row: excelRow,
-        field: "Name",
-        message: "Menu already exists",
-      });
-
-      continue;
-    }
-
-    //--------------------------------------------------
-    // Effective date
-    //--------------------------------------------------
-
-    let effectiveFrom = new Date();
-
-    if (row.EffectiveFrom) {
-      const parsed = new Date(row.EffectiveFrom);
-
-      if (Number.isNaN(parsed.getTime())) {
+      if (!Number.isFinite(price) || price <= 0) {
         errors.push({
           row: excelRow,
-          field: "EffectiveFrom",
-          message: "Invalid date",
+          field: "Price",
+          message: "Price must be greater than zero",
         });
 
         continue;
       }
 
-      effectiveFrom = parsed;
+      //--------------------------------------------------
+      // Duplicate inside Excel
+      //--------------------------------------------------
+
+      const lowerName = name.toLowerCase();
+
+      if (seenNames.has(lowerName)) {
+        errors.push({
+          row: excelRow,
+          field: "Name",
+          message: "Duplicate menu in Excel",
+        });
+
+        continue;
+      }
+
+      seenNames.add(lowerName);
+
+      //--------------------------------------------------
+      // Already exists in database
+      //--------------------------------------------------
+
+      if (existingNames.has(lowerName)) {
+        errors.push({
+          row: excelRow,
+          field: "Name",
+          message: "Menu already exists",
+        });
+
+        continue;
+      }
+
+      //--------------------------------------------------
+      // Effective date
+      //--------------------------------------------------
+
+      let effectiveFrom = new Date();
+
+      if (row.EffectiveFrom) {
+        const parsed = new Date(row.EffectiveFrom);
+
+        if (Number.isNaN(parsed.getTime())) {
+          errors.push({
+            row: excelRow,
+            field: "EffectiveFrom",
+            message: "Invalid date",
+          });
+
+          continue;
+        }
+
+        effectiveFrom = parsed;
+      }
+
+      //--------------------------------------------------
+      // Valid row
+      //--------------------------------------------------
+
+      validRows.push({
+        row: excelRow,
+        name,
+        mealtype,
+        price,
+        effectiveFrom,
+      });
     }
 
     //--------------------------------------------------
-    // Valid row
+    // Save preview
     //--------------------------------------------------
 
-    validRows.push({
-      row: excelRow,
-      name,
-      description,
-      price,
-      effectiveFrom,
-    });
-  }
-
-  //--------------------------------------------------
-  // Save preview
-  //--------------------------------------------------
 
 
+    if (errors.length > 0) {
+      return {
+        previewToken: null,
+        totalRows: rows.length,
+        validRows,
+        validCount: validRows.length,
+        errorCount: errors.length,
+        errors,
+      };
+    }
 
-  if (errors.length > 0) {
+    const previewToken = saveImportPreview(
+      validRows,
+      "MENU"
+    );
+
     return {
-      previewToken: null,
+      previewToken,
       totalRows: rows.length,
       validRows,
       validCount: validRows.length,
@@ -540,18 +677,4 @@ export const previewMenuImport = async (
       errors,
     };
   }
-
-  const previewToken = saveImportPreview(
-    validRows,
-    "MENU"
-  );
-
-  return {
-    previewToken,
-    totalRows: rows.length,
-    validRows,
-    validCount: validRows.length,
-    errorCount: errors.length,
-    errors,
-  };
 };
