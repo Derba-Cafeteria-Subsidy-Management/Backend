@@ -8,9 +8,8 @@ export interface ImportEmployeeRow {
     row: number;
     EmployeeNumber: string;
     fullName: string;
-    department?: string;
-    fingerprintId: string;
-    photo?: string;
+    fingerprintId?: string | null;
+    photo?: string | null;
 }
 
 export interface ImportEmployeeError {

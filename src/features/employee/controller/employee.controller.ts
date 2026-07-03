@@ -2,9 +2,12 @@ import { prisma } from "../../../libs/lib/prisma";
 import { getRequestContextFromRequest } from "../../auth/service/auth.service";
 import { getImportPreview, removeImportPreview } from "../../menu/helpers/import-cache";
 import { getSystemSettings } from "../../system-settings/helpers/system-settings.helper.ts/system-settings.helper";
-import { createEmployee, deactivateEmployee, fingerprintScan, getEmployeeById, getEmployees, previewEmployeeImport, updateEmployee } from "../service/employee.service";
+import { createEmployee, deleteEmployee, deactivateEmployee, fingerprintScan, getEmployees, previewEmployeeImport, updateEmployee, SearchEmployeeBy } from "../service/employee.service";
+import { invalidateEmployeeCache } from "../helpers/cache-invalidation.helper.js";
 
 import type { Request, Response, NextFunction } from 'express';
+import { randomUUID } from "node:crypto";
+import { ImportEmployeeRow } from "../types/employee.types";
 
 export const getEmployeesController =
     async (req: Request, res: Response) => {
@@ -15,8 +18,6 @@ export const getEmployeesController =
         const name =
             req.query.name as string;
 
-        const department =
-            req.query.department as string;
 
         const status =
             req.query.status as string;
@@ -33,7 +34,7 @@ export const getEmployeesController =
 
         const isCashier = req.user!.role === "CASHIER";
         const settings = await getSystemSettings();
-        const isSearching = employeeNumber || name || department || status;
+        const isSearching = employeeNumber || name || status;
 
         if (isCashier && !settings.employeeSearchEnabled && isSearching) {
             return res.status(403).json({
@@ -45,7 +46,6 @@ export const getEmployeesController =
         const data = await getEmployees(
             employeeNumber,
             name,
-            department,
             status,
             page,
             limit
@@ -77,11 +77,11 @@ export const createEmployeeController =
         });
     };
 
-export const getEmployeeByIdController =
+export const getEmployeeByNUmberController =
     async (req: Request, res: Response) => {
 
 
-        if (!req.params.id || Array.isArray(req.params.id)) {
+        if (!req.params.Employee_id || Array.isArray(req.params.Employee_id)) {
             return res.status(400).json({
                 success: false,
                 message: 'Employee ID is required'
@@ -89,9 +89,7 @@ export const getEmployeeByIdController =
         }
 
         const data =
-            await getEmployeeById(
-                req.params.id
-            );
+            await SearchEmployeeBy(req.params.Employee_id);
 
         res.status(200).json({
             success: true,
@@ -123,6 +121,33 @@ export const updateEmployeeController =
 
         res.status(200).json({
             success: true,
+            data,
+        });
+    };
+
+export const deleteEmployeeController =
+    async (req: Request, res: Response) => {
+
+        if (!req.params.id || Array.isArray(req.params.id)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Employee ID is required'
+            });
+        }
+
+        const context = getRequestContextFromRequest(req);
+
+        const data = await deleteEmployee(
+            req.params.id,
+            {
+                ...context,
+                AdminId: req.user!.userId
+            }
+        );
+
+        res.status(200).json({
+            success: true,
+            message: 'Employee deleted successfully',
             data,
         });
     };
@@ -176,66 +201,75 @@ export const fingerprintScanController =
 // } from "../helpers/import-preview.cache.js";
 
 export const confirmEmployeeImportController = async (
-  req: Request,
-  res: Response
+    req: Request,
+    res: Response
 ) => {
-  try {
-    const { previewToken } = req.body;
+    try {
+        const { previewToken } = req.body;
 
-    if (!previewToken) {
-      return res.status(400).json({
-        success: false,
-        message: "previewToken is required",
-      });
+        if (!previewToken) {
+            return res.status(400).json({
+                success: false,
+                message: "previewToken is required",
+            });
+        }
+
+        const preview = getImportPreview(previewToken);
+
+        if (!preview) {
+            return res.status(400).json({
+                success: false,
+                message: "Preview expired or not found",
+            });
+        }
+
+        if (preview.type !== "EMPLOYEE") {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid preview token",
+            });
+        }
+
+        const rows = preview.rows;
+
+        const employeedate = []
+
+        for (const row of rows as ImportEmployeeRow[]) {
+            const id = randomUUID();
+            employeedate.push({
+                id,
+                Employee_number: row.EmployeeNumber,
+                full_name: row.fullName,
+                fingerprint_id: row.fingerprintId ?? null,
+                photo: row.photo ?? null,
+            });
+        }
+
+
+        await prisma.$transaction([
+
+            prisma.employees.createMany({
+                data: employeedate
+            }),
+
+
+
+        ]);
+
+        await invalidateEmployeeCache();
+
+        removeImportPreview(previewToken);
+
+        return res.status(201).json({
+            success: true,
+            message: "Employee import completed",
+        });
+    } catch (error: any) {
+        return res.status(500).json({
+            success: false,
+            message: error.message ?? "Import failed",
+        });
     }
-
-    const preview = getImportPreview(previewToken);
-
-    if (!preview) {
-      return res.status(400).json({
-        success: false,
-        message: "Preview expired or not found",
-      });
-    }
-
-    if (preview.type !== "EMPLOYEE") {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid preview token",
-      });
-    }
-
-    const rows = preview.rows;
-
-    const inserted = await prisma.$transaction(async (tx) => {
-      return Promise.all(
-        rows.map((row: any) =>
-          tx.employees.create({
-            data: {
-              Employee_number: row.EmployeeNumber,
-              full_name: row.fullName,
-              department: row.department,
-              fingerprint_id: row.fingerprintId,
-              photo: row.photo,
-            },
-          })
-        )
-      );
-    });
-
-    removeImportPreview(previewToken);
-
-    return res.status(201).json({
-      success: true,
-      message: "Employee import completed",
-      inserted: inserted.length,
-    });
-  } catch (error: any) {
-    return res.status(500).json({
-      success: false,
-      message: error.message ?? "Import failed",
-    });
-  }
 };
 
 export const importEmployeePreviewController = async (

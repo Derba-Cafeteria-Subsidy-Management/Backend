@@ -3,7 +3,7 @@ import { Router } from 'express';
 import { seedSuperAdmin } from '../../../scripts/seed-super-admin.js';
 import { authenticate } from '../../auth/middleware/authenticate.middleware.js';
 import { authorize } from '../../auth/middleware/authorize.middleware.js';
-import { confirmEmployeeImportController, createEmployeeController, deactivateEmployeeController, fingerprintScanController, getEmployeeByIdController, getEmployeesController, importEmployeePreviewController, updateEmployeeController } from '../controller/employee.controller.js';
+import { confirmEmployeeImportController, createEmployeeController, deactivateEmployeeController, deleteEmployeeController, fingerprintScanController, getEmployeeByNUmberController, getEmployeesController, importEmployeePreviewController, updateEmployeeController } from '../controller/employee.controller.js';
 import { uploadExcel } from '../../shared/helpers/upload.middleware.js';
 
 export const employeeRouter = Router();
@@ -126,9 +126,9 @@ employeeRouter.post(
 
 /**
  * @openapi
- * /api/employees/{id}:
+ * /api/employees/{employee_Number}:
  *   get:
- *     summary: Get employee details
+ *     summary: Get or search employee details by employee number
  *     description: Returns complete information for a specific employee, including today's meal sessions.
  *     tags:
  *       - Employees
@@ -136,7 +136,7 @@ employeeRouter.post(
  *       - bearerAuth: []
  *     parameters:
  *       - in: path
- *         name: id
+ *         name: employee_Number
  *         required: true
  *         schema:
  *           type: string
@@ -153,11 +153,11 @@ employeeRouter.post(
  *         description: Employee not found.
  */
 employeeRouter.get(
-    '/:id',
+    '/:employee_Number',
     authenticate,
     authorize('ADMIN', 'SUPER_ADMIN'),
     //   validate(acceptInvitationSchema),
-    getEmployeeByIdController
+    getEmployeeByNUmberController
 );
 
 /**
@@ -207,6 +207,8 @@ employeeRouter.get(
  *         description: Employee not found.
  */
 employeeRouter.put('/:id', authenticate, authorize('ADMIN'), updateEmployeeController);
+
+employeeRouter.delete('/:id', authenticate, authorize('ADMIN'), deleteEmployeeController);
 
 /**
  * @openapi
