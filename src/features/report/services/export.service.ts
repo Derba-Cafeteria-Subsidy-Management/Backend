@@ -12,7 +12,6 @@ export const generatePayrollExcel = async (data: any[]) => {
   sheet.columns = [
     { header: 'Employee ID', key: 'employeeId' },
     { header: 'Full Name', key: 'employeeName' },
-    { header: 'Department', key: 'department' },
     { header: 'Meal Count', key: 'mealCount' },
     { header: 'Total Cost', key: 'totalMealCost' },
     { header: 'Employee Share', key: 'employeeShare' },
