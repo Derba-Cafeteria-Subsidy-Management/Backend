@@ -21,18 +21,18 @@ export const roundMoney = (value: number): number => {
 type PrismaExecutor = PrismaClient | Prisma.TransactionClient;
 
 export const getActiveMenuPrice = async (
-   db: PrismaExecutor,
+  db: PrismaExecutor,
   menuItemId: string,
 ): Promise<number> => {
 
 
-    const cacheKey = await buildCurrentPriceKey(
-      menuItemId
-    );
-  
-    const cached = await cacheGet<any>(cacheKey);
-  
-    if (cached) return cached;
+  const cacheKey = await buildCurrentPriceKey(
+    menuItemId
+  );
+
+  const cached = await cacheGet<any>(cacheKey);
+
+  if (cached) return cached;
 
   const menuItem = await db.menu_items.findUnique({
     where: { id: menuItemId },
@@ -63,31 +63,31 @@ export const getActiveMenuPrice = async (
 
 export const getActiveSubsidyConfig = async () => {
 
-    const cached = getSubsidyCache();
+  const cached = getSubsidyCache();
 
-    if (cached) {
-        return cached;
-    }
+  if (cached) {
+    return cached;
+  }
 
-    const subsidy = await prisma.subsidy_config.findFirst({
+  const subsidy = await prisma.subsidy_config.findFirst({
 
-        where: {
-            effective_to: null,
-        },
+    where: {
+      effective_to: null,
+    },
 
-        orderBy: {
-            effective_from: "desc",
-        },
+    orderBy: {
+      effective_from: "desc",
+    },
 
-    });
+  });
 
-    if (!subsidy) {
-        throw new Error("Subsidy configuration not found");
-    }
+  if (!subsidy) {
+    throw new NotFoundError("No active subsidy configuration found.");
+  }
 
-    setSubsidyCache(subsidy);
+  setSubsidyCache(subsidy);
 
-    return subsidy;
+  return subsidy;
 
 };
 
@@ -108,7 +108,7 @@ export const calculateShares = (
 
 export const getPriceSharesForMenuItem = async (
   menuItemId: string,
-  db: PrismaExecutor 
+  db: PrismaExecutor
 ): Promise<PriceShares> => {
   const menuPrice = await getActiveMenuPrice(db, menuItemId);
   const subsidy = await getActiveSubsidyConfig();

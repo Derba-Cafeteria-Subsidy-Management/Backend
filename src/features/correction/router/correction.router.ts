@@ -119,8 +119,7 @@ correctionRouter.get(
  *         name: id
  *         required: true
  *         schema:
- *           type: string
- *           format: uuid
+ *           type: string     
  *     responses:
  *       200:
  *         description: Correction approved successfully.
@@ -151,7 +150,6 @@ correctionRouter.post(
  *         required: true
  *         schema:
  *           type: string
- *           format: uuid
  *     requestBody:
  *       required: false
  *       content:

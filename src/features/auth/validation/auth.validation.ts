@@ -16,6 +16,10 @@ export const inviteUserSchema = z.object({
   }),
 });
 
+export const resendInvitationSchema = z.object({
+  email: z.string().trim().toLowerCase().email('Invalid email address'),
+});
+
 export const acceptInvitationSchema = z.object({
   token: z.string().min(1, 'Token is required'),
   password: passwordSchema,
@@ -40,6 +44,7 @@ export const refreshTokenSchema = z.object({
 });
 
 export type InviteUserDto = z.infer<typeof inviteUserSchema>;
+export type ResendInvitationDto = z.infer<typeof resendInvitationSchema>;
 export type AcceptInvitationDto = z.infer<typeof acceptInvitationSchema>;
 export type LoginDto = z.infer<typeof loginSchema>;
 export type ForgotPasswordDto = z.infer<typeof forgotPasswordSchema>;

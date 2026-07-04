@@ -49,24 +49,30 @@ export const payrollExportHandler = async (req: Request, res: Response) => {
 };
 
 
+
 export const generateCompanyPaymentExcel = async (data: any) => {
   const workbook = new ExcelJS.Workbook();
-  const sheet = workbook.addWorksheet('Company Payment');
+  const sheet = workbook.addWorksheet("Company Payment");
 
   sheet.columns = [
-    { header: 'Total Menu Number', key: 'total_menu_number' },
-    { header: 'Total Menu Price', key: 'total_menu_price' },
-    { header: 'Total Company Share', key: 'total_company_share' },
-    { header: 'Transaction From Date', key: 'transactionFromDate' },
-    { header: 'Transaction To Date', key: 'transactionToDate' },
+    { header: "Total Menu Number", key: "total_menu_number", width: 20 },
+    { header: "Total Menu Price", key: "total_menu_price", width: 20 },
+    { header: "Total Company Share", key: "total_company_share", width: 20 },
+    { header: "Transaction From Date", key: "transactionFromDate", width: 25 },
+    { header: "Transaction To Date", key: "transactionToDate", width: 25 },
   ];
 
-  sheet.addRows(data);
+  // 👇 FIX: single object → addRow
+  if (Array.isArray(data)) {
+    sheet.addRows(data);
+  } else {
+    sheet.addRow(data);
+  }
 
   return workbook;
 };
 
-  
+
 
 
 export const companyPaymentExportHandler = async (req: Request, res: Response) => {

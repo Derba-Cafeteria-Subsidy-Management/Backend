@@ -564,7 +564,7 @@ export const previewMenuImport = async (
         message: `Invalid meal type. Must be one of: ${Object.values(mealType).join(", ")}`,
       });
 
-
+    }
       //--------------------------------------------------
       // Price validation
       //--------------------------------------------------
@@ -676,5 +676,4 @@ export const previewMenuImport = async (
       errorCount: errors.length,
       errors,
     };
-  }
-};
+  };

@@ -30,11 +30,6 @@ export const employeeRouter = Router();
  *           type: string
  *         description: Search by employee full name.
  *       - in: query
- *         name: department
- *         schema:
- *           type: string
- *         description: Filter by department.
- *       - in: query
  *         name: status
  *         schema:
  *           type: string
@@ -140,8 +135,7 @@ employeeRouter.post(
  *         required: true
  *         schema:
  *           type: string
- *           format: uuid
- *         description: Employee ID.
+ *         description: Employee_Number
  *     responses:
  *       200:
  *         description: Employee retrieved successfully.

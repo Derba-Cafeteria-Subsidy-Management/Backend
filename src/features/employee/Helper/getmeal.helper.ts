@@ -1,7 +1,7 @@
 import { prisma } from "../../../libs/lib/prisma.js";
 import { startOfDay } from "../../shared/helpers/date.helper.js";
 
-e/* xport const getMealsToday = async (employeeId: string) => {
+/* xport const getMealsToday = async (employeeId: string) => {
     const today = startOfDay(new Date());
 
     const transactions = await prisma.transaction.findMany({

@@ -42,6 +42,10 @@ export interface InviteUserInput {
   role: Exclude<UserRole, 'SUPER_ADMIN'>;
 }
 
+export interface ResendInvitationInput {
+  email: string;
+}
+
 export interface AcceptInvitationInput {
   token: string;
   password: string;

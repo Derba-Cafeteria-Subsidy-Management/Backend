@@ -81,15 +81,15 @@ export const getEmployeeByNUmberController =
     async (req: Request, res: Response) => {
 
 
-        if (!req.params.Employee_id || Array.isArray(req.params.Employee_id)) {
+        if (!req.params.employee_Number|| Array.isArray(req.params.employee_Number)) {
             return res.status(400).json({
                 success: false,
-                message: 'Employee ID is required'
+                message: 'Employee Number is required'
             });
         }
 
         const data =
-            await SearchEmployeeBy(req.params.Employee_id);
+            await SearchEmployeeBy(req.params.employee_Number);
 
         res.status(200).json({
             success: true,

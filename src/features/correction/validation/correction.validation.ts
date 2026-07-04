@@ -1,7 +1,8 @@
 import { z } from 'zod';
 
 export const createCorrectionSchema = z.object({
-  transactionId: z.string().uuid('Invalid transaction ID'),
+  // is just ulid id not uuid
+  transactionId: z.string().min(1, 'Transaction ID is required'),
   newMenuItemId: z.string().uuid('Invalid menu item ID'),
   reason: z.string().min(10, 'Reason must be at least 10 characters'),
 });
@@ -21,7 +22,7 @@ export const correctionListQuerySchema = z.object({
 });
 
 export const correctionIdParamSchema = z.object({
-  id: z.string().uuid('Invalid correction ID'),
+  id: z.string().min(1, 'Correction ID is required')
 });
 
 export const rejectCorrectionSchema = z.object({

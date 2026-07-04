@@ -18,13 +18,22 @@ export const toDateOnlyString = (date: Date): string => {
   return `${year}-${month}-${day}`;
 };
 
-export const parseDateOnly = (value: string): Date => {
-
-  const [year, month, day] = value.split('-').map(Number);
-  if (year == undefined || month == undefined || day == undefined) {
-    throw new Error('Invalid date');
-
+export const parseDateOnly = (value?: string): Date => {
+  if (!value || typeof value !== "string") {
+    throw new Error("Invalid date: expected YYYY-MM-DD");
   }
-  return new Date(year, month - 1, day);
 
+  const parts = value.split("-").map(Number);
+
+  if (parts.length !== 3) {
+    throw new Error("Invalid date format. Expected YYYY-MM-DD");
+  }
+
+  const [year, month, day] = parts;
+
+  if (!year || !month || !day) {
+    throw new Error("Invalid date values");
+  }
+
+  return new Date(year, month - 1, day);
 };
