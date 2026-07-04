@@ -11,6 +11,7 @@ import { subsidyRouter } from './features/subsidy/router/subsidy.router.js';
 import { errorHandler, notFoundHandler } from './errors/errors/apperror.js';
 import { menuRouter } from './features/menu/router/menu.router.js';
 import { employeeRouter } from './features/employee/router/employee.route.js';
+import { auditRouter } from './features/auth/router/audit.router.js';
 
 import swaggerUi from "swagger-ui-express";
 import swaggerSpec from "./config/swagger";
@@ -61,6 +62,7 @@ app.use('/api/corrections', correctionRouter);
 app.use('/api/subsidy', subsidyRouter);
 app.use('/api/menus' , menuRouter);
 app.use('/api/employees' , employeeRouter);
+app.use('/api/audit-logs', auditRouter);
 app.use('/api/users',userManagementRouter);
 app.use('/api/reports',reportRouter );
 app.use('/api/system-settings', systemrouter);

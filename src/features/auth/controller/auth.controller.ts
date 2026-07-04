@@ -8,6 +8,7 @@ import {
   login,
   logout,
   logoutAll,
+  resendInvitation,
   refreshAccessToken,
   resetPassword,
 } from '../service/auth.service.js';
@@ -32,6 +33,24 @@ export const inviteUserHandler = async (
     );
 
     sendSuccess(res, 'User invited successfully', result, 201);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const resendInvitationHandler = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const result = await resendInvitation(
+      req.user!.userId,
+      req.body,
+      getRequestContextFromRequest(req)
+    );
+
+    sendSuccess(res, 'Invitation resent successfully', result);
   } catch (error) {
     next(error);
   }

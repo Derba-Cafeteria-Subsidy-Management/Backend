@@ -5,42 +5,60 @@ import { parseDateOnly } from "../../shared/helpers/date.helper";
 export const getAnalytics = async (query: any) => {
   const { mode, date, from, to, year } = query;
 
-  // -----------------------------
-  // DAILY MODE
-  // -----------------------------
-  if (mode === 'daily') {
+  //--------------------------------------------------
+  // DAILY MODE (FULL WEEK OUTPUT)
+  //--------------------------------------------------
+
+  if (mode === "daily") {
+    if (!date) throw new Error("date is required");
+
     const targetDate = parseDateOnly(date);
 
     const transactions = await prisma.transaction.findMany({
       where: { transactionDate: targetDate },
     });
 
-    const bySession: Record<string, number> = {};
-    const revenue: Record<string, number> = {};
-    const cost: Record<string, number> = {};
-    const count: Record<string, number> = {};
+    const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+    const map: Record<string, any> = {};
+
+    for (const d of days) {
+      map[d] = {
+        count: 0,
+        revenue: 0,
+        company: 0,
+      };
+    }
 
     for (const t of transactions) {
-      const session = t.menu_session;
+      const day = days[t.transactionDate.getDay()];
 
-      bySession[session] = (bySession[session] || 0) + 1;
-      revenue[session] = (revenue[session] || 0) + t.menu_price;
-      cost[session] = (cost[session] || 0) + t.company_share;
-      count[session] = (count[session] || 0) + 1;
+      if (day === undefined){
+        throw new Error(`Invalid day index: ${t.transactionDate.getDay()}`);
+      }
+
+      map[day].count++;
+      map[day].revenue += t.menu_price;
+      map[day].company += t.company_share;
     }
 
     return {
-      labels: Object.keys(bySession),
-      transactions: Object.values(bySession),
-      companyRevenue: Object.values(cost),
-      employeeCost: Object.values(revenue),
+      labels: days,
+      transactions: days.map((d) => map[d].count),
+      companyRevenue: days.map((d) => map[d].company),
+      employeeCost: days.map((d) => map[d].revenue),
     };
   }
 
-  // -----------------------------
-  // WEEKLY MODE
-  // -----------------------------
-  if (mode === 'weekly') {
+  //--------------------------------------------------
+  // WEEKLY MODE (FULL RANGE W1–W5)
+  //--------------------------------------------------
+
+  if (mode === "weekly") {
+    if (!from || !to) {
+      throw new Error("from and to are required");
+    }
+
     const transactions = await prisma.transaction.findMany({
       where: {
         transactionDate: {
@@ -50,36 +68,41 @@ export const getAnalytics = async (query: any) => {
       },
     });
 
-    const weeks: Record<string, any> = {};
+    const weeks: Record<string, any> = {
+      W1: { count: 0, revenue: 0, company: 0 },
+      W2: { count: 0, revenue: 0, company: 0 },
+      W3: { count: 0, revenue: 0, company: 0 },
+      W4: { count: 0, revenue: 0, company: 0 },
+      W5: { count: 0, revenue: 0, company: 0 },
+    };
 
     for (const t of transactions) {
       const week = getWeekLabel(t.transactionDate);
 
-      if (!weeks[week]) {
-        weeks[week] = {
-          count: 0,
-          revenue: 0,
-          company: 0,
-        };
-      }
+      if (!weeks[week]) continue;
 
       weeks[week].count++;
       weeks[week].revenue += t.menu_price;
       weeks[week].company += t.company_share;
     }
 
+    const labels = Object.keys(weeks);
+
     return {
-      labels: Object.keys(weeks),
-      transactions: Object.values(weeks).map((w) => w.count),
-      companyRevenue: Object.values(weeks).map((w) => w.company),
-      employeeCost: Object.values(weeks).map((w) => w.revenue),
+      labels,
+      transactions: labels.map((w) => weeks[w].count),
+      companyRevenue: labels.map((w) => weeks[w].company),
+      employeeCost: labels.map((w) => weeks[w].revenue),
     };
   }
 
-  // -----------------------------
-  // MONTHLY MODE
-  // -----------------------------
-  if (mode === 'monthly') {
+  //--------------------------------------------------
+  // MONTHLY MODE (FULL 12 MONTHS)
+  //--------------------------------------------------
+
+  if (mode === "monthly") {
+    if (!year) throw new Error("year is required");
+
     const start = new Date(`${year}-01-01`);
     const end = new Date(`${year}-12-31`);
 
@@ -94,31 +117,35 @@ export const getAnalytics = async (query: any) => {
 
     const months: Record<string, any> = {};
 
+    for (let i = 1; i <= 12; i++) {
+      months[`M${i}`] = {
+        count: 0,
+        revenue: 0,
+        company: 0,
+      };
+    }
+
     for (const t of transactions) {
-      const month = t.transactionDate.getMonth() + 1;
-
-      const key = `M${month}`;
-
-      if (!months[key]) {
-        months[key] = {
-          count: 0,
-          revenue: 0,
-          company: 0,
-        };
-      }
+      const key = `M${t.transactionDate.getMonth() + 1}`;
 
       months[key].count++;
       months[key].revenue += t.menu_price;
       months[key].company += t.company_share;
     }
 
+    const labels = Object.keys(months);
+
     return {
-      labels: Object.keys(months),
-      transactions: Object.values(months).map((m) => m.count),
-      companyRevenue: Object.values(months).map((m) => m.company),
-      employeeCost: Object.values(months).map((m) => m.revenue),
+      labels,
+      transactions: labels.map((m) => months[m].count),
+      companyRevenue: labels.map((m) => months[m].company),
+      employeeCost: labels.map((m) => months[m].revenue),
     };
   }
+
+  //--------------------------------------------------
+  // DEFAULT SAFE RESPONSE
+  //--------------------------------------------------
 
   return {
     labels: [],

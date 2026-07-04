@@ -29,7 +29,6 @@ export interface TransactionDetailResponse {
     id: string;
     fullName: string;
     employeeNumber: string;
-    department: string;
   };
   menuItem: {
     id: string;

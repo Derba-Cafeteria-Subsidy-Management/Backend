@@ -36,7 +36,6 @@ export const getPayrollReport = async (from: string, to: string) => {
     return {
       employeeId: emp?.Employee_number ?? 'Employee Not Found',
       employeeName: emp?.full_name ?? 'Unknown',
-      department: emp?.department ?? 'N/A',
       mealCount: row._count._all,
       totalMealCost: row._sum.menu_price ?? 0,
       employeeShare: row._sum.employee_share ?? 0,

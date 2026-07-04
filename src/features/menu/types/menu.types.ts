@@ -1,23 +1,26 @@
+import { FoodType } from "@prisma/client";
 import { RequestContext } from "../../auth/types/auth.types";
+
+
+
 
 export interface MenuResponse {
   id: string;
   name: string;
-  description?: string | null;
+  mealtype: FoodType;
   currentPrice: number;
   active: boolean;
 }
 
 export interface CreateMenuInput {
   name: string;
-  description?: string;
+  mealtype: FoodType;
   price: number;
-  effectiveFrom: Date;
 }
 
 export interface UpdateMenuInput {
   name?: string;
-  description?: string;
+  mealtype?: FoodType;
   active?: boolean;
 }
 
@@ -33,7 +36,7 @@ export interface CreateMenuContext extends RequestContext {
 export interface ImportMenuRow {
     row: number;
     name: string;
-    description?: string;
+    mealtype: FoodType;
     price: number;
     effectiveFrom: Date;
 }

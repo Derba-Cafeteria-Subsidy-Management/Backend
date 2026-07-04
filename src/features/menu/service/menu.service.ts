@@ -9,14 +9,70 @@ import {
 import XLSX from "xlsx";
 
 import {
-    ImportMenuError,
-    ImportMenuRow
+  ImportMenuError,
+  ImportMenuRow
 } from "../types/menu.types";
 
 import {
-    saveImportPreview
+  saveImportPreview
 } from "../helpers/import-cache";
 import { createAuditLog } from '../../auth/service/audit.service.js';
+import { buildMenuKey, buildMenuListKey, buildPriceHistoryKey } from '../helpers/menu-cache.helper.js';
+import { cacheGet, cacheSet } from '../../../libs/lib/cache.js';
+import { invalidateMenuCache } from '../helpers/cache-Invalidation.helper.js';
+import { FoodType, mealType, Prisma } from "@prisma/client";
+import { NotFoundError } from '../../../errors/errors/apperror.js';
+
+
+
+
+export const getMenuById = async (
+    menuId: string
+) => {
+
+    const cacheKey =
+        buildMenuKey(menuId);
+
+    const cached =
+        await cacheGet<any>(cacheKey);
+
+    if(cached){
+
+        return cached;
+
+    }
+
+    const menu =
+        await prisma.menu_items.findUnique({
+
+            where:{
+                id:menuId
+            },
+
+            select:{
+                id:true,
+                name:true,
+                status:true
+            }
+
+        });
+
+    if(!menu){
+
+        throw new NotFoundError("Menu not found");
+
+    }
+
+    await cacheSet(
+        cacheKey,
+        menu,
+        600
+    );
+
+    return menu;
+
+}
+
 
 export const getMenus = async (
   activeOnly = true,
@@ -25,76 +81,108 @@ export const getMenus = async (
   query?: string
 ) => {
 
-const menus = await prisma.menu_items.findMany({
-  where: {
-    ...(activeOnly && { status: 'ACTIVE' }),
-    ...(query && {
-      OR: [
-        { name: { contains: query, mode: 'insensitive' } },
-        { description: { contains: query, mode: 'insensitive' } }
-      ]
-    })
-  },
-  skip : (page - 1) * pageSize,
-  take : pageSize,
-  //search with query if provided
-  include: {
-    PriceHistory: {
-      orderBy: {
-        effctive_from: 'desc', // ⚠️ check spelling, should be `effective_from`
-      },
-      select: {
-        price: true,
-      },
-      take: 1,
-    },
-  },
-  
-});
-
-var totalCount = await prisma.menu_items.count({
-  where: {
-    ...(activeOnly && { status: 'ACTIVE' }),
-  },
-});
-
-return {
-  data: menus.map((menu) => ({
-    id: menu.id,
-    name: menu.name,
-    description: menu.description,
-    currentPrice: menu.PriceHistory[0]?.price ?? 0,
-    active: menu.status === 'ACTIVE',
-  })),
-  pagination: {
+  const cacheKey = await buildMenuListKey(
+    activeOnly,
     page,
     pageSize,
-    totalCount,
-    totalPages: Math.ceil(totalCount / pageSize),
-  },
+    query
+  );
+
+  const cached = await cacheGet<any>(cacheKey);
+
+  if (cached) return cached;
+
+  const where: Prisma.menu_itemsWhereInput = {};
+
+  if (activeOnly) {
+    where.status = "ACTIVE";
+  }
+
+  if (query) {
+    const mealType = query.toUpperCase();
+
+    if (Object.values(FoodType).includes(mealType as FoodType)) {
+      // Query is a valid FoodType → filter by mealtype
+      where.mealtype = mealType as FoodType;
+    } else {
+      // Query is not a FoodType → filter by name/description
+      where.OR = [
+        {
+          name: {
+            contains: query,
+            mode: Prisma.QueryMode.insensitive,
+          },
+        }
+      ];
+    }
+  }
+
+
+
+  const [menus, totalCount] = await Promise.all([
+    prisma.menu_items.findMany({
+      where,
+      orderBy: {
+        createdAt: "desc",
+      },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+      include: {
+        PriceHistory: {
+          orderBy: {
+            effctive_from: "desc",
+          },
+          select: {
+            price: true
+          },
+          take: 1,
+        },
+      },
+    }),
+
+    prisma.menu_items.count({
+      where,
+    }),
+  ]);
+
+  const response = {
+    data: menus.map((menu) => ({
+      id: menu.id,
+      name: menu.name,
+      mealtype: menu.mealtype,
+      currentPrice: menu.PriceHistory[0]?.price ?? 0,
+      active: menu.status === "ACTIVE",
+    })),
+
+    pagination: {
+      page,
+      pageSize,
+      totalCount,
+      totalPages: Math.ceil(totalCount / pageSize),
+    },
+  };
+
+  await cacheSet(cacheKey, response, 600);
+
+  return response;
 };
-}
 
 
 export const createMenu = async (
   input: CreateMenuInput,
-
   context: CreateMenuContext
 ) => {
 
-  const effectiveFrom =
-    input.effectiveFrom ??
-    new Date();
+  const effectiveFrom = new Date();
 
-  return prisma.$transaction(
+  const menus = await prisma.$transaction(
     async (tx: any) => {
 
       const menu =
         await tx.menu_items.create({
           data: {
             name: input.name,
-            description:
-              input.description
+            mealtype: input.mealtype
           }
         });
 
@@ -102,30 +190,34 @@ export const createMenu = async (
         data: {
           menuItemId: menu.id,
           price: input.price,
-          effectiveFrom,
-          effectiveTo: null,  
-          createdby:context.AdminId
-          
-        }
+          effctive_from: effectiveFrom,
+          effective_to: null,
+          createdBy: context.AdminId,
+        },
       });
 
-        await createAuditLog({
-    userId:  context.AdminId,
+      return menu;
+    }
+  );
+
+  await createAuditLog({
+    userId: context.AdminId,
     action: 'MENU_ITEM_CREATED',
     entityType: 'Menu_items',
-    entityId:menu.id,
+    entityId: menus.id,
     metadata: {
-      menuItemId:menu.id,
-      menuname:input.name,
+      menuItemId: menus.id,
+      menuname: input.name,
       effectiveFrom: effectiveFrom,
       price: input.price
     },
     ipAddress: context.ipAddress,
     userAgent: context.userAgent,
   });
-      return menu;
-    }
-  );
+
+  await invalidateMenuCache(menus.id);
+
+  return menus;
 };
 
 export const updateMenu = async (
@@ -134,22 +226,24 @@ export const updateMenu = async (
   context: CreateMenuContext
 ) => {
 
-   await createAuditLog({
+  await createAuditLog({
     userId: context.AdminId,
     action: 'MENU_ITEM_UPDATED',
     entityType: 'Menu_items',
     entityId: id,
     metadata: {
-      menuItemId:id,
-  /*     menuname:input.name,
-      effectiveFrom: effectiveFrom,
-      price: input.price */
+      menuItemId: id,
+      /*     menuname:input.name,
+          effectiveFrom: effectiveFrom,
+          price: input.price */
     },
     ipAddress: context.ipAddress,
     userAgent: context.userAgent,
   });
 
-  return prisma.menu_items.update({
+
+
+  const updated = prisma.menu_items.update({
     where: {
       id
     },
@@ -159,9 +253,9 @@ export const updateMenu = async (
         name: input.name
       }),
 
-      ...(input.description && {
-        description:
-          input.description
+      ...(input.mealtype && {
+        mealtype:
+          input.mealtype
       }),
 
       ...(input.active !== undefined && {
@@ -172,6 +266,46 @@ export const updateMenu = async (
       })
     }
   });
+
+  await invalidateMenuCache(id);
+
+  return updated;
+};
+
+export const deleteMenu = async (
+  id: string,
+  context: CreateMenuContext
+) => {
+  const menu = await prisma.menu_items.findUnique({
+    where: { id },
+  });
+
+  if (!menu) {
+    throw new Error('Menu item not found');
+  }
+
+  await prisma.menu_items.delete({
+    where: { id },
+  });
+
+  await invalidateMenuCache(id);
+
+  await createAuditLog({
+    userId: context.AdminId,
+    action: 'MENU_ITEM_DELETED',
+    entityType: 'Menu_items',
+    entityId: id,
+    metadata: {
+      menuItemId: id,
+      menuName: menu.name,
+    },
+    ipAddress: context.ipAddress,
+    userAgent: context.userAgent,
+  });
+
+  return {
+    id: menu.id,
+  };
 };
 
 export const addPriceVersion = async (
@@ -179,35 +313,69 @@ export const addPriceVersion = async (
   input: CreatePriceVersionInput,
   context: CreateMenuContext
 ) => {
-  return prisma.$transaction(async (tx) => {
-    // Find current active price
-    const currentPrice = await tx.price_history.findFirst({
-      where: {
-        menuItemId: menuId,
-        effective_to: null, // match schema field
-      },
+
+  const currentPrice = await prisma.price_history.findFirst({
+    where: {
+      menuItemId: menuId,
+      effective_to: null, // match schema field
+    },
+  });
+
+  if (!currentPrice) {
+    throw new Error("Current price not found");
+  }
+
+  // Close out the current price one day before new effectiveFrom
+  const previousDay = new Date(input.effectiveFrom);
+  previousDay.setDate(previousDay.getDate() - 1);
+
+
+  const result = await prisma.$transaction(
+    async (tx: any) => {
+      // Find current active price
+
+      await tx.price_history.update({
+        where: { id: currentPrice.id },
+        data: { effective_to: previousDay },
+      });
+
+
+      // Insert new price version
+      return tx.price_history.create({
+        data: {
+          menuItemId: menuId,
+          price: input.price,
+          effctive_from: input.effectiveFrom, // match schema field
+          effective_to: null,
+          createdBy: context.AdminId,
+
+
+
+        },
+        include: {
+          menuItem: {
+            select: {
+              id: true,
+              name: true,
+              status: true,
+              createdAt: true,
+            },
+          },
+        },
+      });
+
     });
 
-    if (!currentPrice) {
-      throw new Error("Current price not found");
-    }
 
-    // Close out the current price one day before new effectiveFrom
-    const previousDay = new Date(input.effectiveFrom);
-    previousDay.setDate(previousDay.getDate() - 1);
+  await invalidateMenuCache(menuId);
 
-    await tx.price_history.update({
-      where: { id: currentPrice.id },
-      data: { effective_to: previousDay },
-    });
-
-    await createAuditLog({
+  await createAuditLog({
     userId: context.AdminId,
     action: 'MENU_ITEM_UPDATED',
     entityType: 'Menu_items',
     entityId: menuId,
     metadata: {
-      menuItemId:menuId,
+      menuItemId: menuId,
       price: input.price,
       effectiveFrom: input.effectiveFrom,
     },
@@ -215,208 +383,297 @@ export const addPriceVersion = async (
     userAgent: context.userAgent,
   });
 
-    // Insert new price version
-    return tx.price_history.create({
-      data: {
+
+  return result;
+};
+
+
+export const getPriceHistory = async (menuId: string) => {
+
+  const cacheKey =
+    buildPriceHistoryKey(menuId);
+
+  const cached =
+    await cacheGet<any>(cacheKey);
+
+  if (cached)
+    return cached;
+
+  const history =
+    await prisma.price_history.findMany({
+
+      where: {
         menuItemId: menuId,
-        price: input.price,
-        effctive_from: input.effectiveFrom, // match schema field
-        effective_to: null,
-        createdBy: context.AdminId,
       },
+
+      orderBy: {
+        effctive_from: "desc",
+      },
+
       include: {
-        menuItem: {
-          select: {
-            id: true,
-            name: true,
-            status: true,
-            createdAt: true,
-          },
-        },
+        menuItem: true,
+        createdByUser: true,
       },
     });
-  });
+
+  const response =
+    history.map((ph) => ({
+      id: ph.id,
+
+      menuItemId: ph.menuItemId,
+
+      menuItem: {
+        id: ph.menuItem.id,
+        name: ph.menuItem.name,
+        status: ph.menuItem.status,
+        createdAt: ph.menuItem.createdAt,
+      },
+
+      price: ph.price,
+
+      effectiveFrom: ph.effctive_from,
+
+      effectiveTo: ph.effective_to,
+
+      createdBy: ph.createdByUser.email,
+
+      createdAt: ph.createdAt,
+    }));
+
+  await cacheSet(
+    cacheKey,
+    response,
+    1800
+  );
+
+  return response;
 };
 
 
-  export const getPriceHistory = async (menuId: string) => {
-  const priceHistories = await prisma.price_history.findMany({
-    where: { menuItemId: menuId },
-    orderBy: { effctive_from: 'desc' },
-    include: {
-      menuItem: true, // include relation so you can access menuItem fields
-      createdByUser: true,
-    },
-  });
 
-  return priceHistories.map((ph) => ({
-    id: ph.id,
-    menuItemId: ph.menuItemId,
-    menuItem: {
-      id: ph.menuItem.id,
-      name: ph.menuItem.name,
-      status: ph.menuItem.status,
-      createdAt: ph.menuItem.createdAt,
-    },
-    price: ph.price,
-    effectiveFrom: ph.effctive_from, // use schema field name
-    effectiveTo: ph.effective_to,
-    // include createdBy user details
-    createdBy: ph.createdByUser.email,
-    createdAt: ph.createdAt,
-  }));
-};
-
-
-export const previewMenuImport =
-async (
-    file: Express.Multer.File
+export const previewMenuImport = async (
+  file: Express.Multer.File
 ) => {
+  const workbook = XLSX.read(file.buffer, {
+    type: "buffer",
+  });
 
-    const workbook =
-        XLSX.read(file.buffer, {
-            type: "buffer"
-        });
-
-  // to make sure workbook has at least one sheet index not to be undefined
-  if (workbook.SheetNames.length === 0) {
-    throw new Error(
-      "Excel file is empty"
-    );
+  if (!workbook.SheetNames.length) {
+    throw new Error("Excel file is empty");
   }
 
-  // Type 'undefined' cannot be used as an index type.
-  if (workbook.SheetNames[0] === undefined) {
-    throw new Error(
-      "Excel file is empty"
-    );
+  const firstSheet = workbook.SheetNames[0];
+
+  if (!firstSheet) {
+    throw new Error("Excel file is empty");
   }
 
-    const sheet =
-        workbook.Sheets[
-            workbook.SheetNames[0]
-        ];
+  const sheet = workbook.Sheets[firstSheet];
 
-        if (!sheet) {
-            throw new Error(
-                "Excel file is empty"
-            );
-        }
+  if (!sheet) {
+    throw new Error("Excel file is empty");
+  }
 
-    const data =
-        XLSX.utils.sheet_to_json<any>(
-            sheet
-        );
+  const rows = XLSX.utils.sheet_to_json<any>(sheet, {
+    defval: "",
+    raw: false
+  });
 
-    const validRows: ImportMenuRow[] = [];
+  const validRows: ImportMenuRow[] = [];
+  const errors: ImportMenuError[] = [];
 
-    const errors: ImportMenuError[] = [];
+  if (rows.length === 0) {
+    throw new Error("Excel file contains no data.");
+  }
 
-    for (
-        let i = 0;
-        i < data.length;
-        i++
-    ) {
+  //--------------------------------------------------
+  // Collect all names from excel
+  //--------------------------------------------------
 
-        const row =
-            data[i];
+  const excelNames = rows
+    .map((r) => String(r.Name).trim())
+    .filter(Boolean);
 
-        const excelRow =
-            i + 2;
+  //--------------------------------------------------
+  // Get all existing menus with ONE query
+  //--------------------------------------------------
 
-        if (!row.Name) {
+  const existingMenus = await prisma.menu_items.findMany({
+    where: {
+      name: {
+        in: excelNames,
+      },
+    },
+    select: {
+      name: true,
+    },
+  });
 
-            errors.push({
-                row: excelRow,
-                field: "Name",
-                message: "Required"
-            });
+  const existingNames = new Set(
+    existingMenus.map((m) => m.name.toLowerCase())
+  );
 
-            continue;
-        }
+  //--------------------------------------------------
+  // Detect duplicate names INSIDE Excel
+  //--------------------------------------------------
 
-        if (
-            row.Price == null ||
-            Number(row.Price) <= 0
-        ) {
+  const seenNames = new Set<string>();
 
-            errors.push({
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const excelRow = i + 2;
 
-                row: excelRow,
+    const name = String(row.Name ?? "").trim();
+    const mealtype = row.MealType;
+    const price = Number(row.Price);
 
-                field: "Price",
 
-                message:
-                    "Must be greater than zero"
 
-            });
+    //--------------------------------------------------
+    // Required
+    //--------------------------------------------------
 
-            continue;
-        }
+    if (!name) {
+      errors.push({
+        row: excelRow,
+        field: "Name",
+        message: "Required",
+      });
 
-        const exists =
-            await prisma.menu_items.findFirst({
-
-                where: {
-
-                    name: row.Name
-
-                }
-
-            });
-
-        if (exists) {
-
-            errors.push({
-
-                row: excelRow,
-
-                field: "Name",
-
-                message:
-                    "Menu already exists"
-
-            });
-
-            continue;
-        }
-
-        validRows.push({
-
-            row: excelRow,
-
-            name: row.Name,
-
-            description:
-                row.Description ? row.Description : '',
-
-            price:
-                Number(row.Price),
-
-            effectiveFrom: row.EffectiveFrom ? new Date(row.EffectiveFrom) : new Date()
-               
-               
-
-        });
-
+      continue;
     }
 
-    const previewToken =
-        saveImportPreview(
-            validRows
-        );
+    if (!mealtype) {
+      errors.push({
+        row: excelRow,
+        field: "MealType",
+        message: "Required",
+      });
+
+      continue;
+    }
+
+
+    // mealtype validation with case insensitive check
+    const validMealTypes = Object.values(mealType).map((mt) => mt.toLowerCase());
+
+    if (!validMealTypes.includes(String(mealtype).toLowerCase())) {
+      errors.push({
+        row: excelRow,
+        field: "MealType",
+        message: `Invalid meal type. Must be one of: ${Object.values(mealType).join(", ")}`,
+      });
+
+    }
+      //--------------------------------------------------
+      // Price validation
+      //--------------------------------------------------
+
+      if (!Number.isFinite(price) || price <= 0) {
+        errors.push({
+          row: excelRow,
+          field: "Price",
+          message: "Price must be greater than zero",
+        });
+
+        continue;
+      }
+
+      //--------------------------------------------------
+      // Duplicate inside Excel
+      //--------------------------------------------------
+
+      const lowerName = name.toLowerCase();
+
+      if (seenNames.has(lowerName)) {
+        errors.push({
+          row: excelRow,
+          field: "Name",
+          message: "Duplicate menu in Excel",
+        });
+
+        continue;
+      }
+
+      seenNames.add(lowerName);
+
+      //--------------------------------------------------
+      // Already exists in database
+      //--------------------------------------------------
+
+      if (existingNames.has(lowerName)) {
+        errors.push({
+          row: excelRow,
+          field: "Name",
+          message: "Menu already exists",
+        });
+
+        continue;
+      }
+
+      //--------------------------------------------------
+      // Effective date
+      //--------------------------------------------------
+
+      let effectiveFrom = new Date();
+
+      if (row.EffectiveFrom) {
+        const parsed = new Date(row.EffectiveFrom);
+
+        if (Number.isNaN(parsed.getTime())) {
+          errors.push({
+            row: excelRow,
+            field: "EffectiveFrom",
+            message: "Invalid date",
+          });
+
+          continue;
+        }
+
+        effectiveFrom = parsed;
+      }
+
+      //--------------------------------------------------
+      // Valid row
+      //--------------------------------------------------
+
+      validRows.push({
+        row: excelRow,
+        name,
+        mealtype,
+        price,
+        effectiveFrom,
+      });
+    }
+
+    //--------------------------------------------------
+    // Save preview
+    //--------------------------------------------------
+
+
+
+    if (errors.length > 0) {
+      return {
+        previewToken: null,
+        totalRows: rows.length,
+        validRows,
+        validCount: validRows.length,
+        errorCount: errors.length,
+        errors,
+      };
+    }
+
+    const previewToken = saveImportPreview(
+      validRows,
+      "MENU"
+    );
 
     return {
-
-        previewToken,
-
-        totalRows:
-            data.length,
-
-        validRows,
-
-        errors
-
+      previewToken,
+      totalRows: rows.length,
+      validRows,
+      validCount: validRows.length,
+      errorCount: errors.length,
+      errors,
     };
-
-};
+  };

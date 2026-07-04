@@ -1,7 +1,9 @@
 
 import { prisma } from "../../../libs/lib/prisma.js";
+import { createAuditLog } from "../../auth/service/audit.service.js";
+import { setSystemCache } from "../../shared/cache/system.cache.js";
 import { getSystemSettings } from "../helpers/system-settings.helper.ts/system-settings.helper.js";
-import { UpdateAuthenticationSettingsInput } from "../types/system-settings.types.js";
+import { CreateSystemContext, UpdateAuthenticationSettingsInput } from "../types/system-settings.types.js";
 
 
 export const getAuthenticationSettings = async () => {
@@ -15,7 +17,9 @@ export const getAuthenticationSettings = async () => {
 
 export const updateAuthenticationSettings = async (
   input: UpdateAuthenticationSettingsInput,
-  updatedById: string
+  updatedById: string,
+
+   context: CreateSystemContext
 ) => {
   const existing = await getSystemSettings();
 
@@ -30,17 +34,34 @@ export const updateAuthenticationSettings = async (
     },
   });
 
-  await prisma.auditLog.create({
-  data: {
-    action: "SYSTEM_SETTINGS_UPDATED",
-    userId: updatedById,
-    meta: {
-      fingerprintEnabled: input.fingerprintEnabled,
-      employeeSearchEnabled: input.employeeSearchEnabled,
-    },
-  },
-});
+  setSystemCache(updated);
 
+//   await prisma.auditLog.create({
+//   data: {
+//     action: "SYSTEM_SETTINGS_UPDATED",
+//     userId: updatedById,
+//     meta: {
+//       fingerprintEnabled: input.fingerprintEnabled,
+//       employeeSearchEnabled: input.employeeSearchEnabled,
+//     },
+//   },
+// });
+
+   await createAuditLog({
+           userId: updatedById,
+           action: 'SYSTEM_SETTINGS_UPDATED',
+           entityType: 'System_settings',
+           entityId: updated.id,
+           metadata: {
+             fingerprintEnabled: input.fingerprintEnabled,
+             employeeSearchEnabled: input.employeeSearchEnabled,
+           },
+           ipAddress: context.ipAddress,
+           userAgent: context.userAgent,
+         });
+        
+
+        
   return {
     fingerprintEnabled: updated.fingerprintEnabled,
     employeeSearchEnabled: updated.employeeSearchEnabled,

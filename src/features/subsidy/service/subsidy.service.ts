@@ -8,6 +8,7 @@ import type {
   CreateSubsidyInput,
   SubsidyContext,
 } from '../types/subsidy.types.js';
+import { setSubsidyCache } from '../../shared/cache/system.cache.js';
 
 const mapSubsidyResponse = (config: {
   id: string;
@@ -66,6 +67,8 @@ export const createSubsidyConfig = async (
       },
     });
   });
+
+  setSubsidyCache(config);
 
   await createAuditLog({
     userId: context.userId,

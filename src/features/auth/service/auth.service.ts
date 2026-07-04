@@ -1,5 +1,5 @@
 import type { Request } from 'express';
-import { UserStatus } from '@prisma/client';
+import { Prisma, UserRole, UserStatus } from '@prisma/client';
 import { prisma } from '../../../libs/lib/prisma.js';
 import {
   AppError,
@@ -19,6 +19,7 @@ import type {
   InviteUserInput,
   LoginInput,
   RequestContext,
+  ResendInvitationInput,
   ResetPasswordInput,
   SafeUser,
 } from '../types/auth.types.js';
@@ -95,6 +96,44 @@ const deleteExpiredRefreshTokens = async (userId: string): Promise<void> => {
   });
 };
 
+const buildInvitationPayload = () => {
+  const rawToken = generateSecureToken();
+
+  return {
+    rawToken,
+    tokenHash: hashToken(rawToken),
+    expiresAt: getInvitationExpiryDate(),
+  };
+};
+
+const replacePendingInvitations = async (
+  tx: Prisma.TransactionClient,
+  input: {
+    email: string;
+    role: UserRole;
+    inviterId: string;
+    tokenHash: string;
+    expiresAt: Date;
+  }
+) => {
+  await tx.invitation.deleteMany({
+    where: {
+      email: input.email,
+      acceptedAt: null,
+    },
+  });
+
+  return tx.invitation.create({
+    data: {
+      email: input.email,
+      role: input.role,
+      tokenHash: input.tokenHash,
+      expiresAt: input.expiresAt,
+      invitedById: input.inviterId,
+    },
+  });
+};
+
 export const inviteUser = async (
   inviterId: string,
   input: InviteUserInput,
@@ -120,9 +159,7 @@ export const inviteUser = async (
     throw new ConflictError('A pending invitation already exists for this email');
   }
 
-  const rawToken = generateSecureToken();
-  const tokenHash = hashToken(rawToken);
-  const expiresAt = getInvitationExpiryDate();
+  const { rawToken, tokenHash, expiresAt } = buildInvitationPayload();
 
   const result = await prisma.$transaction(async (tx) => {
     const user = await tx.user.create({
@@ -134,14 +171,12 @@ export const inviteUser = async (
       },
     });
 
-    const invitation = await tx.invitation.create({
-      data: {
-        email: input.email,
-        role: input.role,
-        tokenHash,
-        expiresAt,
-        invitedById: inviterId,
-      },
+    const invitation = await replacePendingInvitations(tx, {
+      email: input.email,
+      role: input.role,
+      inviterId,
+      tokenHash,
+      expiresAt,
     });
 
     return { user, invitation };
@@ -170,10 +205,90 @@ export const inviteUser = async (
   });
 
   return {
+    token: rawToken,
     userId: result.user.id,
     email: result.user.email,
     role: result.user.role,
     status: result.user.status,
+    expiresAt,
+  };
+};
+
+export const resendInvitation = async (
+  inviterId: string,
+  input: ResendInvitationInput,
+  context: RequestContext
+): Promise<{
+  token: string;
+  userId: string;
+  email: string;
+  role: UserRole;
+  status: UserStatus;
+  expiresAt: Date;
+}> => {
+  const user = await prisma.user.findUnique({
+    where: { email: input.email },
+  });
+
+  if (!user) {
+    throw new NotFoundError('User not found');
+  }
+
+  if (user.role === UserRole.SUPER_ADMIN) {
+    throw new ForbiddenError('Invitation resends are not allowed for this user');
+  }
+
+  if (user.status !== UserStatus.PENDING) {
+    throw new ConflictError('Only pending users can receive a new invitation');
+  }
+
+  const { rawToken, tokenHash, expiresAt } = buildInvitationPayload();
+
+  const invitation = await prisma.$transaction(async (tx) => {
+    return replacePendingInvitations(tx, {
+      email: user.email,
+      role: user.role,
+      inviterId,
+      tokenHash,
+      expiresAt,
+    });
+  });
+
+  if (process.env.NODE_ENV === 'development') {
+    console.log('Invitation Token:', rawToken);
+    return {
+      token: rawToken,
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+      status: user.status,
+      expiresAt,
+    };
+  }
+
+  await sendInvitationEmail(user.email, rawToken, user.role);
+
+  await createAuditLog({
+    userId: inviterId,
+    action: 'USER_INVITED',
+    entityType: 'User',
+    entityId: user.id,
+    metadata: {
+      email: user.email,
+      role: user.role,
+      invitationId: invitation.id,
+      resend: true,
+    },
+    ipAddress: context.ipAddress,
+    userAgent: context.userAgent,
+  });
+
+  return {
+    token: rawToken,
+    userId: user.id,
+    email: user.email,
+    role: user.role,
+    status: user.status,
     expiresAt,
   };
 };
@@ -308,9 +423,16 @@ export const login = async (
     userAgent: context.userAgent,
   });
 
+  // refresh token 
+
+
+
+
+
   return {
     user: toSafeUser(updatedUser),
     tokens,
+    
   };
 };
 

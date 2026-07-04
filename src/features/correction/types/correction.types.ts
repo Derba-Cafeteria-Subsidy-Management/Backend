@@ -31,4 +31,6 @@ export interface MenuValueSnapshot {
   menuItemId: string;
   menuItemName: string;
   menuPrice: number;
+  employeeShare: number;
+  companyShare: number; 
 }

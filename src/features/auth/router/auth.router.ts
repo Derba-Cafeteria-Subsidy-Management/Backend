@@ -8,6 +8,7 @@ import {
   logoutAllHandler,
   logoutHandler,
   meHandler,
+  resendInvitationHandler,
   refreshTokenHandler,
   resetPasswordHandler,
 } from '../controller/auth.controller.js';
@@ -23,6 +24,7 @@ import {
   forgotPasswordSchema,
   inviteUserSchema,
   loginSchema,
+  resendInvitationSchema,
   refreshTokenSchema,
   resetPasswordSchema,
 } from '../validation/auth.validation.js';
@@ -76,6 +78,51 @@ authRouter.post(
   authorize('SUPER_ADMIN'),
   validate(inviteUserSchema),
   inviteUserHandler
+);
+
+/**
+ * @openapi
+ * /api/auth/resend-invitation:
+ *   post:
+ *     summary: Resend invitation
+ *     description: Reissues an invitation token for a pending ADMIN or CASHIER user.
+ *     tags:
+ *       - Authentication
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 example: cashier@example.com
+ *     responses:
+ *       200:
+ *         description: Invitation resent successfully.
+ *       400:
+ *         description: Invalid request.
+ *       401:
+ *         description: Authentication required.
+ *       403:
+ *         description: Super Admin access required.
+ *       404:
+ *         description: User not found.
+ *       409:
+ *         description: User is not pending.
+ */
+authRouter.post(
+  '/resend-invitation',
+  authenticate,
+  authorize('SUPER_ADMIN'),
+  validate(resendInvitationSchema),
+  resendInvitationHandler
 );
 
 

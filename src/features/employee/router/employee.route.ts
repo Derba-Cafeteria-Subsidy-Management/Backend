@@ -3,7 +3,8 @@ import { Router } from 'express';
 import { seedSuperAdmin } from '../../../scripts/seed-super-admin.js';
 import { authenticate } from '../../auth/middleware/authenticate.middleware.js';
 import { authorize } from '../../auth/middleware/authorize.middleware.js';
-import { createEmployeeController, deactivateEmployeeController, fingerprintScanController, getEmployeeByIdController, getEmployeesController, updateEmployeeController } from '../controller/employee.controller.js';
+import { confirmEmployeeImportController, createEmployeeController, deactivateEmployeeController, deleteEmployeeController, fingerprintScanController, getEmployeeByNUmberController, getEmployeesController, importEmployeePreviewController, updateEmployeeController } from '../controller/employee.controller.js';
+import { uploadExcel } from '../../shared/helpers/upload.middleware.js';
 
 export const employeeRouter = Router();
 
@@ -28,11 +29,6 @@ export const employeeRouter = Router();
  *         schema:
  *           type: string
  *         description: Search by employee full name.
- *       - in: query
- *         name: department
- *         schema:
- *           type: string
- *         description: Filter by department.
  *       - in: query
  *         name: status
  *         schema:
@@ -125,9 +121,9 @@ employeeRouter.post(
 
 /**
  * @openapi
- * /api/employees/{id}:
+ * /api/employees/{employee_Number}:
  *   get:
- *     summary: Get employee details
+ *     summary: Get or search employee details by employee number
  *     description: Returns complete information for a specific employee, including today's meal sessions.
  *     tags:
  *       - Employees
@@ -135,12 +131,11 @@ employeeRouter.post(
  *       - bearerAuth: []
  *     parameters:
  *       - in: path
- *         name: id
+ *         name: employee_Number
  *         required: true
  *         schema:
  *           type: string
- *           format: uuid
- *         description: Employee ID.
+ *         description: Employee_Number
  *     responses:
  *       200:
  *         description: Employee retrieved successfully.
@@ -152,11 +147,11 @@ employeeRouter.post(
  *         description: Employee not found.
  */
 employeeRouter.get(
-    '/:id',
+    '/:employee_Number',
     authenticate,
     authorize('ADMIN', 'SUPER_ADMIN'),
     //   validate(acceptInvitationSchema),
-    getEmployeeByIdController
+    getEmployeeByNUmberController
 );
 
 /**
@@ -206,6 +201,8 @@ employeeRouter.get(
  *         description: Employee not found.
  */
 employeeRouter.put('/:id', authenticate, authorize('ADMIN'), updateEmployeeController);
+
+employeeRouter.delete('/:id', authenticate, authorize('ADMIN'), deleteEmployeeController);
 
 /**
  * @openapi
@@ -276,3 +273,64 @@ employeeRouter.post('/fingerprint', authenticate, authorize('CASHIER'), fingerpr
 
 
 
+/**
+ * @openapi
+ * /api/employees/import/preview:
+ *   post:
+ *     summary: Upload Excel file and preview employee import
+ *     tags:
+ *       - Employees
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - file
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Preview generated successfully
+ */
+employeeRouter.post(
+    "/import/preview",
+    uploadExcel.single("file"),
+    authenticate, 
+    authorize('ADMIN'),
+    importEmployeePreviewController
+);
+
+/**
+ * @openapi
+ * /api/employees/import/confirm:
+ *   post:
+ *     summary: Confirm employee import using preview token
+ *     tags:
+ *       - Employees
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               previewToken:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: Import completed successfully
+ */
+employeeRouter.post(
+    "/import/confirm",
+    authenticate,
+    authorize('ADMIN'),
+    confirmEmployeeImportController
+);
