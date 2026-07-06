@@ -1,53 +1,22 @@
+import { ifError } from "node:assert";
 import { prisma } from "../../../libs/lib/prisma";
 import { parseDateOnly } from "../../shared/helpers/date.helper";
+import { createBucket, endOfMonth, endOfYear, getWeekOfMonth, MEAL_LABELS, MONTH_LABELS, startOfMonth, startOfYear, WEEKDAY_LABELS } from "../Helper/analytics.helper";
+import { NotFoundError } from "../../../errors/errors/apperror";
 
 
 export const getAnalytics = async (query: any) => {
-  const { mode, date, from, to, year } = query;
+  const { mode, date, from, to, year, month } = query;
 
   //--------------------------------------------------
   // DAILY MODE (FULL WEEK OUTPUT)
   //--------------------------------------------------
 
   if (mode === "daily") {
-    if (!date) throw new Error("date is required");
-
-    const targetDate = parseDateOnly(date);
-
-    const transactions = await prisma.transaction.findMany({
-      where: { transactionDate: targetDate },
-    });
-
-    const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
-    const map: Record<string, any> = {};
-
-    for (const d of days) {
-      map[d] = {
-        count: 0,
-        revenue: 0,
-        company: 0,
-      };
+    if (!date) {
+      throw new NotFoundError("date is required");
     }
-
-    for (const t of transactions) {
-      const day = days[t.transactionDate.getDay()];
-
-      if (day === undefined){
-        throw new Error(`Invalid day index: ${t.transactionDate.getDay()}`);
-      }
-
-      map[day].count++;
-      map[day].revenue += t.menu_price;
-      map[day].company += t.company_share;
-    }
-
-    return {
-      labels: days,
-      transactions: days.map((d) => map[d].count),
-      companyRevenue: days.map((d) => map[d].company),
-      employeeCost: days.map((d) => map[d].revenue),
-    };
+    return getDailyAnalytics(date);
   }
 
   //--------------------------------------------------
@@ -56,44 +25,9 @@ export const getAnalytics = async (query: any) => {
 
   if (mode === "weekly") {
     if (!from || !to) {
-      throw new Error("from and to are required");
+      throw new NotFoundError("from and to are required");
     }
-
-    const transactions = await prisma.transaction.findMany({
-      where: {
-        transactionDate: {
-          gte: parseDateOnly(from),
-          lte: parseDateOnly(to),
-        },
-      },
-    });
-
-    const weeks: Record<string, any> = {
-      W1: { count: 0, revenue: 0, company: 0 },
-      W2: { count: 0, revenue: 0, company: 0 },
-      W3: { count: 0, revenue: 0, company: 0 },
-      W4: { count: 0, revenue: 0, company: 0 },
-      W5: { count: 0, revenue: 0, company: 0 },
-    };
-
-    for (const t of transactions) {
-      const week = getWeekLabel(t.transactionDate);
-
-      if (!weeks[week]) continue;
-
-      weeks[week].count++;
-      weeks[week].revenue += t.menu_price;
-      weeks[week].company += t.company_share;
-    }
-
-    const labels = Object.keys(weeks);
-
-    return {
-      labels,
-      transactions: labels.map((w) => weeks[w].count),
-      companyRevenue: labels.map((w) => weeks[w].company),
-      employeeCost: labels.map((w) => weeks[w].revenue),
-    };
+    return getWeeklyAnalytics(from, to);
   }
 
   //--------------------------------------------------
@@ -101,46 +35,19 @@ export const getAnalytics = async (query: any) => {
   //--------------------------------------------------
 
   if (mode === "monthly") {
-    if (!year) throw new Error("year is required");
 
-    const start = new Date(`${year}-01-01`);
-    const end = new Date(`${year}-12-31`);
-
-    const transactions = await prisma.transaction.findMany({
-      where: {
-        transactionDate: {
-          gte: start,
-          lte: end,
-        },
-      },
-    });
-
-    const months: Record<string, any> = {};
-
-    for (let i = 1; i <= 12; i++) {
-      months[`M${i}`] = {
-        count: 0,
-        revenue: 0,
-        company: 0,
-      };
+    if (!year || !month) {
+      throw new NotFoundError("year and month are required");
     }
 
-    for (const t of transactions) {
-      const key = `M${t.transactionDate.getMonth() + 1}`;
+    return getMonthlyAnalytics(year, month);
+  }
 
-      months[key].count++;
-      months[key].revenue += t.menu_price;
-      months[key].company += t.company_share;
+  if (mode === "yearly") {
+    if (!year) {
+      throw new NotFoundError("year is required");
     }
-
-    const labels = Object.keys(months);
-
-    return {
-      labels,
-      transactions: labels.map((m) => months[m].count),
-      companyRevenue: labels.map((m) => months[m].company),
-      employeeCost: labels.map((m) => months[m].revenue),
-    };
+    return getYearlyAnalytics(year);
   }
 
   //--------------------------------------------------
@@ -158,6 +65,282 @@ export const getAnalytics = async (query: any) => {
 // -----------------------------
 // Helper: WEEK CALCULATOR
 // -----------------------------
+
+
+
+
+const getDailyAnalytics = async (date: string) => {
+  const targetDate = parseDateOnly(date);
+
+  const transactions = await prisma.transaction.findMany({
+    where: {
+      transactionDate: targetDate,
+    },
+  });
+
+  const buckets: Record<
+    string,
+    ReturnType<typeof createBucket>
+  > = {};
+
+  // initialize every meal
+  for (const meal of MEAL_LABELS) {
+    buckets[meal] = createBucket();
+  }
+
+
+
+  for (const transaction of transactions) {
+    const meal = transaction.menu_session;
+
+    if (!buckets[meal]) {
+      buckets[meal] = createBucket();
+    }
+
+    buckets[meal].transactions++;
+
+    buckets[meal].companyRevenue += Number(
+      transaction.company_share
+    );
+
+    buckets[meal].employeeCost += Number(
+      transaction.menu_price
+    );
+  }
+
+  return {
+    labels: MEAL_LABELS,
+
+    transactions: MEAL_LABELS.map(
+      (meal) => buckets[meal]?.transactions ?? 0
+    ),
+
+    companyRevenue: MEAL_LABELS.map(
+      (meal) => buckets[meal]?.companyRevenue ?? 0
+    ),
+
+    employeeCost: MEAL_LABELS.map(
+      (meal) => buckets[meal]?.employeeCost ?? 0
+    ),
+  };
+};
+
+
+
+
+// ======================================================
+// WEEKLY
+// ======================================================
+
+const getWeeklyAnalytics = async (
+  from: string,
+  to: string
+) => {
+  const start = parseDateOnly(from);
+  const end = parseDateOnly(to);
+
+  const transactions = await prisma.transaction.findMany({
+    where: {
+      transactionDate: {
+        gte: start,
+        lte: end,
+      },
+    },
+  });
+
+  const labels: string[] = [];
+  const buckets: Record<
+    string,
+    ReturnType<typeof createBucket>
+  > = {};
+
+  const current = new Date(start);
+
+  while (current <= end) {
+    const label = WEEKDAY_LABELS[current.getDay()] ?? 'Unknown';
+
+    labels.push(label);
+
+    buckets[label] = createBucket();
+
+    current.setDate(current.getDate() + 1);
+  }
+
+  for (const transaction of transactions) {
+    const label = WEEKDAY_LABELS[transaction.transactionDate.getDay()] ?? 'Unknown';
+
+    if (!buckets[label]) {
+      buckets[label] = createBucket();
+    }
+
+    buckets[label].transactions++;
+
+    buckets[label].companyRevenue += Number(
+      transaction.company_share
+    );
+
+    buckets[label].employeeCost += Number(
+      transaction.menu_price
+    );
+  }
+
+  return {
+    labels,
+
+    transactions: labels.map(
+      (label) => buckets[label]?.transactions ?? 0
+    ),
+
+    companyRevenue: labels.map(
+      (label) => buckets[label]?.companyRevenue ?? 0
+    ),
+
+    employeeCost: labels.map(
+      (label) => buckets[label]?.employeeCost ?? 0
+    ),
+  };
+};
+
+
+// ======================================================
+// MONTHLY
+// ======================================================
+
+const getMonthlyAnalytics = async (
+  year: number,
+  month: number
+) => {
+  const start = startOfMonth(year, month);
+  const end = endOfMonth(year, month);
+
+  const transactions = await prisma.transaction.findMany({
+    where: {
+      transactionDate: {
+        gte: start,
+        lte: end,
+      },
+    },
+  });
+
+  const totalWeeks = getWeekOfMonth(end);
+
+  const labels = Array.from(
+    { length: totalWeeks },
+    (_, i) => `W${i + 1}`
+  );
+
+  const buckets: Record<
+    string,
+    ReturnType<typeof createBucket>
+  > = {};
+
+  labels.forEach((label) => {
+    buckets[label] = createBucket();
+  });
+
+  for (const transaction of transactions) {
+    const week = `W${getWeekOfMonth(
+      transaction.transactionDate
+    )}`;
+
+    if (!buckets[week]) {
+      buckets[week] = createBucket();
+    }
+
+    buckets[week].transactions++;
+
+    buckets[week].companyRevenue += Number(
+      transaction.company_share
+    );
+
+    buckets[week].employeeCost += Number(
+      transaction.menu_price
+    );
+  }
+
+  return {
+    labels,
+
+    transactions: labels.map(
+      (label) => buckets[label]?.transactions ?? 0
+    ),
+
+    companyRevenue: labels.map(
+      (label) => buckets[label]?.companyRevenue ?? 0
+    ),
+
+    employeeCost: labels.map(
+      (label) => buckets[label]?.employeeCost ?? 0
+    ),
+  };
+};
+
+
+
+
+// ======================================================
+// YEARLY
+// ======================================================
+
+const getYearlyAnalytics = async (year: number) => {
+  const start = startOfYear(year);
+  const end = endOfYear(year);
+
+  const transactions = await prisma.transaction.findMany({
+    where: {
+      transactionDate: {
+        gte: start,
+        lte: end,
+      },
+    },
+  });
+
+  const buckets: Record<
+    string,
+    ReturnType<typeof createBucket>
+  > = {};
+
+  MONTH_LABELS.forEach((label) => {
+    buckets[label] = createBucket();
+  });
+
+  for (const transaction of transactions) {
+    const month = `M${transaction.transactionDate.getMonth() + 1}`;
+
+    if (!buckets[month]) {
+      buckets[month] = createBucket();
+    }
+
+    buckets[month].transactions++;
+
+    buckets[month].companyRevenue += Number(
+      transaction.company_share
+    );
+
+    buckets[month].employeeCost += Number(
+      transaction.menu_price
+    );
+  }
+
+  return {
+    labels: MONTH_LABELS,
+
+    transactions: MONTH_LABELS.map(
+      (label) => buckets[label]?.transactions ?? 0
+    ),
+
+    companyRevenue: MONTH_LABELS.map(
+      (label) => buckets[label]?.companyRevenue ?? 0
+    ),
+
+    employeeCost: MONTH_LABELS.map(
+      (label) => buckets[label]?.employeeCost ?? 0
+    ),
+  };
+};
+// -----------------------------
+// Helper: WEEK CALCULATOR
+// -----------------------------
 const getWeekLabel = (date: Date) => {
   const d = new Date(date);
   const firstDay = new Date(d.getFullYear(), 0, 1);
@@ -167,3 +350,5 @@ const getWeekLabel = (date: Date) => {
 
   return `W${diff + 1}`;
 };
+
+

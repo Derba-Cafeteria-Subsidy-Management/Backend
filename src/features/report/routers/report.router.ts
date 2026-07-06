@@ -190,7 +190,7 @@ reportRouter.get(
  *         required: true
  *         schema:
  *           type: string
- *           enum: [daily, weekly, monthly]
+ *           enum: [daily, weekly, monthly,yearly]
  *       - in: query
  *         name: date
  *         schema:
@@ -203,6 +203,12 @@ reportRouter.get(
  *         name: to
  *         schema:
  *           type: string
+ *       - in: query
+ *         name: month
+ *         schema:
+ *           type: number
+ *           minimum: 1
+ *           maximum: 12
  *       - in: query
  *         name: year
  *         schema:
