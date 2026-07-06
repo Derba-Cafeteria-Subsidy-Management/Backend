@@ -149,7 +149,7 @@ employeeRouter.post(
 employeeRouter.get(
     '/:employee_Number',
     authenticate,
-    authorize('ADMIN', 'SUPER_ADMIN'),
+    authorize('ADMIN', 'SUPER_ADMIN', 'CASHIER'),
     //   validate(acceptInvitationSchema),
     getEmployeeByNUmberController
 );

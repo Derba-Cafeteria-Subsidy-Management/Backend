@@ -11,6 +11,7 @@ export interface CreateTransactionInput {
 
 export interface TransactionListQuery {
   employeeId?: string | undefined;
+  employeeNumber?: string | undefined;
   mealSession?: MealSession | undefined;
   from?: string | undefined;
   to?: string | undefined;

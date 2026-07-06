@@ -24,7 +24,7 @@ export const subsidyRouter = Router();
 subsidyRouter.get(
   '/',
   authenticate,
-  authorize('SUPER_ADMIN'),
+  authorize('SUPER_ADMIN', 'ADMIN', 'CASHIER'),
   getSubsidyHandler
 );
 

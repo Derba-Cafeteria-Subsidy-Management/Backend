@@ -85,6 +85,10 @@ transactionRouter.post(
  *           type: string
  *           format: uuid
  *       - in: query
+ *         name: employeeNumber
+ *         schema:
+ *           type: string
+ *       - in: query    
  *         name: mealSession
  *         schema:
  *           type: string

@@ -33,16 +33,23 @@ export const getTransactionsHandler = async (
     const query = res.locals.query as TransactionListQuery;
     const data = await getTransactions(query, req.user!.role);
 
-    if (
-      req.user!.role === 'CASHIER' &&
-      query.from && query.to &&
-      query.from !== query.to
-    ) {
-      return res.status(403).json({
-        success: false,
-        message: 'Cashiers are not authorized to view transactions for multiple days',
-      });
+
+    const today = new Date().toISOString().split('T')[0]; // "YYYY-MM-DD"
+    
+
+    if (req.user?.role === 'CASHIER') {
+      if ((query.from !== today || query.to !== today)) {
+        return res.status(403).json({
+          success: false,
+          message: 'Cashiers are only authorized to view transactions for today',
+        });
+      }
+
+     // allowe them to filter by employeeNumber if they want to see transactions for a specific employee
     }
+
+
+
 
     res.status(200).json({ success: true, data });
   } catch (error) {
