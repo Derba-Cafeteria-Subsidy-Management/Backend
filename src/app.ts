@@ -25,30 +25,21 @@ export const app = express();
 
 app.set('trust proxy', 1);
 
-if (config.isdev) {
-  app.use(cors({
-    origin: (_origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) =>
-      callback(null, true),
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  }));
-} else {
-  app.use(cors({
-    origin: (_origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
-      callback(null, true);
-    },
-    credentials: true,
-  }));
-}
+app.use(cors({
+  origin: (_origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+    callback(null, true);
+  },
+  credentials: true,
+}));
 
 app.use(helmet());
 app.use(cookieParser());
 app.use(express.json());
 
 app.use(
-    "/api-docs",
-    swaggerUi.serve,
-    swaggerUi.setup(swaggerSpec)
+  "/api-docs",
+  swaggerUi.serve,
+  swaggerUi.setup(swaggerSpec)
 );
 
 
@@ -60,11 +51,11 @@ app.use('/api/transactions', transactionRouter);
 app.use('/api/sync', syncRouter);
 app.use('/api/corrections', correctionRouter);
 app.use('/api/subsidy', subsidyRouter);
-app.use('/api/menus' , menuRouter);
-app.use('/api/employees' , employeeRouter);
+app.use('/api/menus', menuRouter);
+app.use('/api/employees', employeeRouter);
 app.use('/api/audit-logs', auditRouter);
-app.use('/api/users',userManagementRouter);
-app.use('/api/reports',reportRouter );
+app.use('/api/users', userManagementRouter);
+app.use('/api/reports', reportRouter);
 app.use('/api/system-settings', systemrouter);
 
 app.use(notFoundHandler);

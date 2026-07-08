@@ -99,7 +99,7 @@ correctionRouter.post(
 correctionRouter.get(
   '/',
   authenticate,
-  authorize('ADMIN', 'SUPER_ADMIN'),
+  authorize('ADMIN', 'SUPER_ADMIN', 'CASHIER'),
   validateQuery(correctionListQuerySchema),
   getCorrectionsHandler
 );

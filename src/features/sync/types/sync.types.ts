@@ -8,7 +8,6 @@ export interface OfflineTransactionInput {
   employeeId: string;
   mealSession: MealSession;
   menuItemId: string;
-  fingerprintId: string;
   offlineAt: string;
 }
 
