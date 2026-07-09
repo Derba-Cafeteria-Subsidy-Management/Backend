@@ -11,17 +11,18 @@ import { createTransactionSchema, transactionListQuerySchema, transactionIdParam
 
 export const transactionRouter = Router();
 
+
 /**
  * @openapi
  * /api/transactions:
  *   post:
  *     summary: Register a meal transaction
- *     description: Records a meal transaction for an eligible employee. Transactions are permanent and cannot be edited directly.
+ *     description: Records a meal transaction for an eligible employee. A transaction can contain multiple food items. Transactions are permanent and cannot be edited directly.
  *     tags:
  *       - Transactions
  *     security:
  *       - bearerAuth: []
- *     parameters: []
+ *
  *     requestBody:
  *       required: true
  *       content:
@@ -31,42 +32,87 @@ export const transactionRouter = Router();
  *             required:
  *               - employeeId
  *               - mealSession
- *               - menuItemId
+ *               - items
+ *
  *             properties:
+ *
  *               employeeId:
  *                 type: string
  *                 format: uuid
+ *                 description: Employee receiving the meal
+ *
  *               mealSession:
  *                 type: string
- *                 enum: [BREAKFAST, LUNCH, DINNER]
- *               menuItemId:
- *                 type: string
- *                 format: uuid
+ *                 enum:
+ *                   - BREAKFAST
+ *                   - LUNCH
+ *                   - DINNER
+ *
+ *               items:
+ *                 type: array
+ *                 minItems: 1
+ *                 description: Food items included in this meal transaction
+ *
+ *                 items:
+ *                   type: object
+ *                   required:
+ *                     - menuItemId
+ *                     - quantity
+ *
+ *                   properties:
+ *
+ *                     menuItemId:
+ *                       type: string
+ *                       format: uuid
+ *                       description: Menu item ID
+ *
+ *                     quantity:
+ *                       type: integer
+ *                       minimum: 1
+ *                       default: 1
+ *
  *           example:
- *             employeeId: "uuid"
+ *             employeeId: "employee-uuid"
  *             mealSession: "LUNCH"
- *             menuItemId: "uuid"
+ *             items:
+ *               - menuItemId: "chicken-menu-uuid"
+ *                 quantity: 1
+ *               - menuItemId: "juice-menu-uuid"
+ *                 quantity: 2
+ *
+ *
  *     responses:
+ *
  *       201:
  *         description: Meal transaction registered successfully.
+ *
  *       400:
  *         description: Invalid request.
+ *
  *       401:
  *         description: Unauthorized.
+ *
  *       403:
  *         description: Cashier authorization required.
+ *
  *       404:
  *         description: Employee or menu item not found.
+ *
  *       409:
  *         description: Employee already registered for this meal session today.
  */
 transactionRouter.post(
   '/',
   authenticate,
-  authorize('CASHIER', 'ADMIN', 'SUPER_ADMIN'),
+  authorize(
+    'CASHIER',
+    'ADMIN',
+    'SUPER_ADMIN'
+  ),
   validate(createTransactionSchema),
   createTransactionHandler
 );
+
 
 /**
  * @openapi

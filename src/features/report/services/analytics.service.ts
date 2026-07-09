@@ -65,65 +65,130 @@ export const getAnalytics = async (query: any) => {
 // -----------------------------
 // Helper: WEEK CALCULATOR
 // -----------------------------
-
-
-
-
 const getDailyAnalytics = async (date: string) => {
+
   const targetDate = parseDateOnly(date);
 
+
   const transactions = await prisma.transaction.findMany({
+
     where: {
       transactionDate: targetDate,
     },
+
+
+   
+ include: {
+      items: true,
+    },
   });
+
+
 
   const buckets: Record<
     string,
     ReturnType<typeof createBucket>
   > = {};
 
+
+
   // initialize every meal
   for (const meal of MEAL_LABELS) {
+
     buckets[meal] = createBucket();
+
   }
+
 
 
 
   for (const transaction of transactions) {
+
+
     const meal = transaction.menu_session;
 
+
+
     if (!buckets[meal]) {
+
       buckets[meal] = createBucket();
+
     }
 
+
+
+    /**
+     * Count transaction as one meal event
+     * Example:
+     * 
+     * Employee:
+     *   Chicken
+     *   Juice
+     * 
+     * Still = 1 transaction
+     */
     buckets[meal].transactions++;
 
-    buckets[meal].companyRevenue += Number(
-      transaction.company_share
-    );
 
-    buckets[meal].employeeCost += Number(
-      transaction.menu_price
-    );
+
+    /**
+     * Calculate totals from TransactionItems
+     */
+    for (const item of transaction.items) {
+
+
+      const quantity =
+        item.quantity ?? 1;
+
+
+
+      buckets[meal].companyRevenue +=
+        Number(item.company_share) * quantity;
+
+
+
+      buckets[meal].employeeCost +=
+        Number(item.menu_price) * quantity;
+
+
+    }
+
+
   }
 
+
+
+
   return {
+
+
     labels: MEAL_LABELS,
 
+
     transactions: MEAL_LABELS.map(
-      (meal) => buckets[meal]?.transactions ?? 0
+      (meal) =>
+        buckets[meal]?.transactions ?? 0
     ),
+
+
 
     companyRevenue: MEAL_LABELS.map(
-      (meal) => buckets[meal]?.companyRevenue ?? 0
+      (meal) =>
+        buckets[meal]?.companyRevenue ?? 0
     ),
 
+
+
     employeeCost: MEAL_LABELS.map(
-      (meal) => buckets[meal]?.employeeCost ?? 0
+      (meal) =>
+        buckets[meal]?.employeeCost ?? 0
     ),
+
+
   };
+
 };
+
 
 
 
@@ -145,6 +210,10 @@ const getWeeklyAnalytics = async (
         gte: start,
         lte: end,
       },
+    },
+
+     include: {
+      items: true,
     },
   });
 
@@ -175,13 +244,17 @@ const getWeeklyAnalytics = async (
 
     buckets[label].transactions++;
 
-    buckets[label].companyRevenue += Number(
-      transaction.company_share
-    );
+    for (const item of transaction.items) {
+    const quantity =
+        item.quantity ?? 1;
+
+    buckets[label].companyRevenue += Number(item.company_share) * quantity;
 
     buckets[label].employeeCost += Number(
-      transaction.menu_price
-    );
+      item.menu_price
+    ) * quantity;
+
+  }
   }
 
   return {
@@ -220,6 +293,10 @@ const getMonthlyAnalytics = async (
         lte: end,
       },
     },
+
+    include : {
+      items: true
+    }
   });
 
   const totalWeeks = getWeekOfMonth(end);
@@ -249,14 +326,14 @@ const getMonthlyAnalytics = async (
 
     buckets[week].transactions++;
 
-    buckets[week].companyRevenue += Number(
-      transaction.company_share
-    );
-
-    buckets[week].employeeCost += Number(
-      transaction.menu_price
-    );
+    for (const item of transaction.items) {
+      const quantity = item.quantity ?? 1;
+      buckets[week].companyRevenue += Number(item.company_share) * quantity;
+      buckets[week].employeeCost += Number(item.menu_price) * quantity;
+    }
   }
+
+
 
   return {
     labels,
@@ -293,6 +370,9 @@ const getYearlyAnalytics = async (year: number) => {
         lte: end,
       },
     },
+    include: {
+      items: true
+    }
   });
 
   const buckets: Record<
@@ -313,13 +393,11 @@ const getYearlyAnalytics = async (year: number) => {
 
     buckets[month].transactions++;
 
-    buckets[month].companyRevenue += Number(
-      transaction.company_share
-    );
-
-    buckets[month].employeeCost += Number(
-      transaction.menu_price
-    );
+    for (const item of transaction.items) {
+      const quantity = item.quantity ?? 1;
+      buckets[month].companyRevenue += Number(item.company_share) * quantity;
+      buckets[month].employeeCost += Number(item.menu_price) * quantity;
+    }
   }
 
   return {

@@ -5,12 +5,19 @@ import {
   NotFoundError,
   ValidationError,
 } from '../../../errors/errors/apperror.js';
+
 import { createAuditLog } from '../../auth/service/audit.service.js';
+
 import {
   getCashierDisplayName,
   getPriceSharesForMenuItem,
 } from '../../shared/helpers/pricing.helper.js';
-import { endOfDay, parseDateOnly } from '../../shared/helpers/date.helper.js';
+
+import {
+  endOfDay,
+  parseDateOnly,
+} from '../../shared/helpers/date.helper.js';
+
 import type {
   ApproveCorrectionContext,
   CorrectionContext,
@@ -19,19 +26,20 @@ import type {
   MenuValueSnapshot,
   RejectCorrectionInput,
 } from '../types/correction.types.js';
+
 import { ulid } from 'ulid';
 import { getMenuById } from '../../menu/service/menu.service.js';
+
+
 
 const buildMenuSnapshot = async (
   menuItemId: string,
   db: Prisma.TransactionClient = prisma
-
-
 ): Promise<MenuValueSnapshot> => {
 
 
-  const menu =
-    await getMenuById(menuItemId);
+  const menu = await getMenuById(menuItemId);
+
 
   const shares =
     await getPriceSharesForMenuItem(
@@ -39,240 +47,451 @@ const buildMenuSnapshot = async (
       db
     );
 
+
   return {
+
     menuItemId: menu.id,
+
     menuItemName: menu.name,
+
     menuPrice: shares.menuPrice,
+
     employeeShare: shares.employeeShare,
-    companyShare: shares.companyShare
+
+    companyShare: shares.companyShare,
+
+
+
   };
 
 };
 
 
+
+
+// =====================================================
+// CREATE CORRECTION
+// =====================================================
 
 export const createCorrectionRequest = async (
   input: CreateCorrectionInput,
   context: CorrectionContext
 ) => {
 
+
   let oldValue!: MenuValueSnapshot;
   let newValue!: MenuValueSnapshot;
 
-  let createdCorrection: Awaited<
-    ReturnType<typeof prisma.correction_requests.create>
-  >;
+
+  let createdCorrection: any;
+
 
   try {
 
-    createdCorrection = await prisma.$transaction(async (tx) => {
 
-      //---------------------------------------------------------
-      // Get Transaction
-      //---------------------------------------------------------
+    createdCorrection =
+      await prisma.$transaction(async (tx) => {
 
-      const transaction = await tx.transaction.findUnique({
-        where: {
-          id: input.transactionId,
-        },
-        select: {
-          id: true,
-          transactionDate: true,
-          menu_item_id: true,
-        },
+
+        const transactionItem =
+          await tx.transactionItem.findUnique({
+
+            where: {
+              id: input.transactionId,
+            },
+
+            select: {
+
+              id: true,
+
+              menu_item_id: true,
+
+              transaction: {
+                select: {
+                  id: true
+                }
+              }
+
+            }
+
+          });
+
+
+
+        if (!transactionItem) {
+
+          throw new NotFoundError(
+            "Transaction item not found"
+          );
+
+        }
+
+
+
+        if (
+          transactionItem.menu_item_id ===
+          input.newMenuItemId
+        ) {
+
+          throw new ValidationError(
+            "New menu item must differ from current menu item."
+          );
+
+        }
+
+
+
+        oldValue =
+          await buildMenuSnapshot(
+            transactionItem.menu_item_id,
+            tx
+          );
+
+
+        newValue =
+          await buildMenuSnapshot(
+            input.newMenuItemId,
+            tx
+          );
+
+
+
+
+        return await tx.correction_requests.create({
+
+          data: {
+
+            id: ulid(),
+
+            transactionItemId:
+              input.transactionId,
+
+
+            requestedById:
+              context.requestedById,
+
+
+            reason:
+              input.reason,
+
+
+            old_values:
+              oldValue as unknown as Prisma.InputJsonValue,
+
+
+            new_values:
+              newValue as unknown as Prisma.InputJsonValue,
+
+          },
+
+
+          include: {
+            requestedBy: true
+          }
+
+        });
+
+
+
       });
 
-      if (!transaction) {
-        throw new NotFoundError(
-          "Transaction not found"
-        );
-      }
-
-      //---------------------------------------------------------
-      // Validate menu
-      //---------------------------------------------------------
-
-      if (transaction.menu_item_id === input.newMenuItemId) {
-        throw new ValidationError(
-          "New menu item must differ from current menu item."
-        );
-      }
-
-      //---------------------------------------------------------
-      // Build snapshots
-      //---------------------------------------------------------
-
-      oldValue = await buildMenuSnapshot(
-        transaction.menu_item_id,
-        tx
-      );
-
-      newValue = await buildMenuSnapshot(
-        input.newMenuItemId,
-        tx
-      );
-
-      //---------------------------------------------------------
-      // Create correction
-      //---------------------------------------------------------
-
-      return await tx.correction_requests.create({
-
-        data: {
-
-          id: ulid(),
-
-          transactionId: input.transactionId,
-
-          requestedById: context.requestedById,
-
-          reason: input.reason,
-
-          old_values:
-            oldValue as unknown as Prisma.InputJsonValue,
-
-          new_values:
-            newValue as unknown as Prisma.InputJsonValue,
-
-        },
-
-        include: {
-
-          requestedBy: true,
-
-        },
-
-      });
-
-    });
 
   } catch (error) {
 
-    //---------------------------------------------------------
-    // Duplicate pending correction
-    //---------------------------------------------------------
 
     if (
-      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error instanceof Prisma.PrismaClientKnownRequestError
+      &&
       error.code === "P2002"
     ) {
 
       throw new ConflictError(
-        "A pending correction request already exists for this transaction."
+        "A pending correction already exists for this item."
       );
 
     }
 
+
     throw error;
-  }
-
-  //---------------------------------------------------------
-  // Audit (Outside Transaction)
-  //---------------------------------------------------------
-
-  try {
-
-    await createAuditLog({
-
-      userId: context.requestedById,
-
-      action: "create_correction_request",
-
-      entityType: "correction_requests",
-
-      entityId: createdCorrection.id,
-
-      metadata: {
-
-        transactionId: input.transactionId,
-
-
-
-        reason: input.reason,
-
-      },
-
-      ipAddress: context.ipAddress,
-
-      userAgent: context.userAgent,
-
-    });
-
-  } catch (error) {
-
-    // logger.error(
-    //   "Failed to create audit log",
-    //   error
-    // );
 
   }
 
-  //---------------------------------------------------------
-  // Response
-  //---------------------------------------------------------
+
+
+
+
+  await createAuditLog({
+
+    userId: context.requestedById,
+
+    action: "create_correction_request",
+
+    entityType: "correction_requests",
+
+    entityId: createdCorrection.id,
+
+    metadata: {
+
+      transactionItemId:
+        input.transactionId,
+
+      reason:
+        input.reason,
+
+    },
+
+    ipAddress: context.ipAddress,
+
+    userAgent: context.userAgent,
+
+  });
+
+
 
   return {
 
-    correctionId: createdCorrection.id,
+    correctionId:
+      createdCorrection.id,
 
-    transactionId: createdCorrection.transactionId,
+    transactionItemId:
+      createdCorrection.transactionItemId,
 
-    status: createdCorrection.status,
+    status:
+      createdCorrection.status,
 
     oldValue,
 
     newValue,
 
-    createdAt: createdCorrection.createdAt,
-   
+    createdAt:
+      createdCorrection.createdAt,
 
   };
+
 
 };
-export const getCorrectionRequests = async (query: CorrectionListQuery) => {
-  const where: Record<string, unknown> = {
-    status: query.status,
-  };
 
-  if (query.from || query.to) {
-    where.createdAt = {
-      ...(query.from && { gte: parseDateOnly(query.from) }),
-      ...(query.to && { lte: endOfDay(parseDateOnly(query.to)) }),
+
+
+
+
+// =====================================================
+// LIST CORRECTIONS
+// =====================================================
+
+
+export const getCorrectionRequests = async (
+  query: CorrectionListQuery
+) => {
+
+
+  const where: any = {};
+
+
+
+  if (query.status) {
+
+
+    const statuses =
+      Array.isArray(query.status)
+        ?
+        query.status
+        :
+        query.status
+          .split(",")
+          .map(s => s.trim());
+
+
+    where.status = {
+      in: statuses
     };
+
+
   }
 
-  const [corrections, total] = await Promise.all([
-    prisma.correction_requests.findMany({
-      where,
-      skip: (query.page - 1) * query.limit,
-      take: query.limit,
-      orderBy: { createdAt: 'desc' },
-      include: {
-        requestedBy: true,
-      },
-    }),
-    prisma.correction_requests.count({ where }),
-  ]);
+
+
+  if (query.from || query.to) {
+
+    where.createdAt = {
+
+      ...(query.from && {
+        gte: parseDateOnly(query.from)
+      }),
+
+      ...(query.to && {
+        lte: endOfDay(
+          parseDateOnly(query.to)
+        )
+      })
+
+    };
+
+  }
+
+
+
+  if (query.cashierId) {
+
+    where.requestedById =
+      query.cashierId;
+
+  }
+
+
+
+
+  const [corrections, total] =
+    await Promise.all([
+
+
+      prisma.correction_requests.findMany({
+
+        where,
+
+
+        skip:
+          (query.page - 1) * query.limit,
+
+
+        take:
+          query.limit,
+
+
+        orderBy: {
+          createdAt: "desc"
+        },
+
+
+        include: {
+
+
+          requestedBy: true,
+
+          approvedBy: true,
+
+          rejectedBy: true,
+
+
+          transactionItem: {
+
+            include: {
+
+
+              menu_item: true,
+
+
+              transaction: {
+
+                include: {
+
+                  employee: true,
+
+                  cashier: true
+
+                }
+
+              }
+
+
+            }
+
+          }
+
+
+        }
+
+
+      }),
+
+
+
+      prisma.correction_requests.count({
+        where
+      })
+
+
+
+    ]);
+
+
+
 
   return {
-    corrections: corrections.map((correction) => ({
-      id: correction.id,
-      cashierName: getCashierDisplayName(correction.requestedBy.email),
-      transactionId: correction.transactionId,
-      oldValue: correction.old_values,
-      newValue: correction.new_values,
-      reason: correction.reason,
-      status: correction.status,
-      createdAt: correction.createdAt,
-    })),
+
+
+    corrections:
+
+
+      corrections.map(item => ({
+
+        id: item.id,
+
+
+        status: item.status,
+
+
+        reason: item.reason,
+
+
+        oldValue: item.old_values,
+
+
+        newValue: item.new_values,
+
+
+        cashierName:
+          getCashierDisplayName(
+            item.requestedBy.email
+          ),
+
+
+        employee:
+          item.transactionItem.transaction.employee.full_name,
+
+
+        menuItem:
+          item.transactionItem.menu_item.name,
+
+
+        transactionItemId:
+          item.transactionItemId,
+
+
+        transactionId:
+          item.transactionItem.transaction.id,
+
+
+        createdAt: item.createdAt,
+
+
+      })),
+
+
+
     pagination: {
+
       page: query.page,
+
       limit: query.limit,
+
       total,
-    },
+
+    }
+
+
   };
+
+
 };
 
+
+
+
+
+// =====================================================
+// APPROVE
+// =====================================================
 
 
 export const approveCorrection = async (
@@ -280,194 +499,302 @@ export const approveCorrection = async (
   context: ApproveCorrectionContext
 ) => {
 
-  const result = await prisma.$transaction(async (tx) => {
 
-    //-------------------------------------------------------
-    // 1. Fetch correction (minimal data)
-    //-------------------------------------------------------
+  const result =
+    await prisma.$transaction(async (tx) => {
 
-    const correction = await tx.correction_requests.findUnique({
-      where: { id },
-      select: {
-        id: true,
-        status: true,
-        transactionId: true,
-        new_values: true,
-      },
-    });
 
-    if (!correction) {
-      throw new NotFoundError("Correction request not found");
-    }
+      const correction =
+        await tx.correction_requests.findUnique({
 
-    if (correction.status !== "PENDING") {
-      throw new ValidationError("Only pending corrections can be approved");
-    }
-
-    const newValues =
-      correction.new_values as MenuValueSnapshot | null;
-
-    if (!newValues) {
-      throw new ValidationError("Invalid correction snapshot");
-    }
-
-    //-------------------------------------------------------
-    // 2. Apply correction to transaction
-    //-------------------------------------------------------
-
-    const updatedTransaction = await tx.transaction.update({
-      where: {
-        id: correction.transactionId,
-      },
-      data: {
-        menu_item_id: newValues.menuItemId,
-        menu_price: newValues.menuPrice,
-        employee_share: newValues.employeeShare,
-        company_share: newValues.companyShare,
-      },
-      select: {
-        id: true,
-        menu_item_id: true,
-        menu_price: true,
-        employee_share: true,
-        company_share: true,
-      },
-    });
-
-    //-------------------------------------------------------
-    // 3. Approve correction (single source of truth update)
-    //-------------------------------------------------------
-
-    const updatedCorrection = await tx.correction_requests.update({
-      where: { id },
-      data: {
-        status: "APPROVED",
-        approvedById: context.adminId,
-        approvedAt: new Date(),
-      },
-      select: {
-        id: true,
-        status: true,
-        approvedAt: true,
-        approvedBy: {
-          select: {
-            email: true,
+          where: {
+            id
           },
-        },
-      },
+
+          select: {
+
+            id: true,
+
+            status: true,
+
+            transactionItemId: true,
+
+            new_values: true
+
+          }
+
+        });
+
+
+
+      if (!correction) {
+
+        throw new NotFoundError(
+          "Correction request not found"
+        );
+
+      }
+
+
+
+      if (correction.status !== "PENDING") {
+
+        throw new ValidationError(
+          "Only pending corrections can be approved"
+        );
+
+      }
+
+
+
+      const newValues =
+        correction.new_values as unknown as MenuValueSnapshot;
+
+
+
+      const updatedItem =
+        await tx.transactionItem.update({
+
+          where: {
+            id: correction.transactionItemId
+          },
+
+
+          data: {
+
+            menu_item_id:
+              newValues.menuItemId,
+
+
+            menu_price:
+              newValues.menuPrice,
+
+
+            employee_share:
+              newValues.employeeShare,
+
+
+            company_share:
+              newValues.companyShare,
+
+          }
+
+
+        });
+
+
+
+
+
+      const updatedCorrection =
+        await tx.correction_requests.update({
+
+          where: {
+            id
+          },
+
+          data: {
+
+            status: "APPROVED",
+
+            approvedById:
+              context.adminId,
+
+            approvedAt:
+              new Date(),
+
+          }
+
+
+        });
+
+
+
+      return {
+
+        correction:
+          updatedCorrection,
+
+        item:
+          updatedItem
+
+      };
+
+
     });
 
-    return {
-      correction: updatedCorrection,
-      transaction: updatedTransaction,
-    };
+
+
+
+
+  await createAuditLog({
+
+    userId: context.adminId,
+
+    action: "approve_correction",
+
+    entityType: "correction_requests",
+
+    entityId: result.correction.id,
+
+    metadata: {
+
+      transactionItemId:
+        result.item.id
+
+    },
+
+    ipAddress: context.ipAddress,
+
+    userAgent: context.userAgent,
+
   });
 
-  //-------------------------------------------------------
-  // 4. Audit (outside transaction)
-  //-------------------------------------------------------
 
-  try {
-    await createAuditLog({
-      userId: context.adminId,
-      action: "approve_correction",
-      entityType: "correction_requests",
-      entityId: result.correction.id,
-      metadata: {
-        transactionId: result.transaction.id,
-        updatedMenuItemId: result.transaction.menu_item_id,
-        updatedMenuPrice: result.transaction.menu_price,
-      },
-      ipAddress: context.ipAddress,
-      userAgent: context.userAgent,
-    });
-  } catch (err) {
-    // logger.error("Audit log failed", err);
-  }
 
-  //-------------------------------------------------------
-  // 5. Response
-  //-------------------------------------------------------
 
   return {
-    correctionId: result.correction.id,
-    status: result.correction.status,
-    approvedAt: result.correction.approvedAt,
 
-    transaction: {
-      id: result.transaction.id,
-      menuItemId: result.transaction.menu_item_id,
-      menuPrice: result.transaction.menu_price,
-      employeeShare: result.transaction.employee_share,
-      companyShare: result.transaction.company_share,
-    },
+
+    correctionId:
+      result.correction.id,
+
+
+    status:
+      result.correction.status,
+
+
+    item: result.item
+
+
   };
+
+
 };
+
+
+
+
+
+// =====================================================
+// REJECT
+// =====================================================
+
 
 export const rejectCorrection = async (
   id: string,
   input: RejectCorrectionInput,
   context: ApproveCorrectionContext
 ) => {
-  const correction = await prisma.correction_requests.findUnique({
-    where: {
-      id,
-      status: 'PENDING'
-    },
-    select: {
-      id: true,
-      status: true,
-      transactionId: true,
-      rejectedBy : {
-        select: {
-          email: true
-        }
-      },
-    },
-  });
 
-  if (!correction) {
-    throw new NotFoundError('Correction request not found');
+
+  const correction =
+    await prisma.correction_requests.findUnique({
+
+      where: {
+        id
+      },
+
+
+      select: {
+
+        id: true,
+
+        status: true,
+
+        transactionItemId: true
+
+      }
+
+
+    });
+
+
+
+  if (
+    !correction ||
+    correction.status !== "PENDING"
+  ) {
+
+    throw new NotFoundError(
+      "Correction request not found"
+    );
+
   }
 
 
 
-  const updated = await prisma.correction_requests.update({
-    where: { id },
-    data: {
-      status: 'REJECTED',
-      rejectedById: context.adminId,
-      rejectedAt: new Date(),
-      rejectionReason: input.reason ?? null,
-    },
-    select: {
-      id: true,
-      status: true,
-      transactionId: true,
-      rejectedBy: {
-        select: {
-          email: true
-        }
+  const updated =
+    await prisma.correction_requests.update({
+
+      where: {
+        id
       },
-    },
-  });
+
+
+      data: {
+
+        status: "REJECTED",
+
+        rejectedById:
+          context.adminId,
+
+
+        rejectedAt:
+          new Date(),
+
+
+        rejectionReason:
+          input.reason ?? null
+
+      }
+
+
+    });
+
+
+
 
   await createAuditLog({
+
     userId: context.adminId,
-    action: 'reject_correction',
-    entityType: 'correction_requests',
-    entityId: correction.id,
+
+    action: "reject_correction",
+
+    entityType: "correction_requests",
+
+    entityId: updated.id,
+
+
     metadata: {
-      transactionId: correction.transactionId,
-      reason: input.reason,
+
+      transactionItemId:
+        correction.transactionItemId,
+
+      reason:
+        input.reason
+
     },
+
+
     ipAddress: context.ipAddress,
-    userAgent: context.userAgent,
+
+    userAgent: context.userAgent
+
   });
 
+
+
   return {
-    correctionId: updated.id,
-    status: updated.status,
-    rejectedBy: getCashierDisplayName(updated.rejectedBy!.email)
+
+    correctionId:
+      updated.id,
+
+
+    status:
+      updated.status
+
   };
+
+
 };

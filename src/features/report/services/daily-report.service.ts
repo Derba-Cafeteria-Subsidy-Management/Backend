@@ -1,4 +1,5 @@
 
+import { includes } from 'zod';
 import { prisma } from '../../../libs/lib/prisma.js';
 import { endOfDay, startOfDay } from '../../shared/helpers/date.helper.js';
 import { DailySummaryResponse } from '../types/report.types.js';
@@ -15,6 +16,11 @@ export const getDailySummary = async (
                 gte: startOfDay(targetDate),
                 lte: endOfDay(targetDate),
             }
+
+
+        },
+        include: {
+            items: true,
         },
     });
 
@@ -32,13 +38,19 @@ export const getDailySummary = async (
         const session = t.menu_session;
 
         sessions[session].count += 1;
-        sessions[session].totalAmount += t.menu_price;
-        sessions[session].employeeTotal += t.employee_share;
-        sessions[session].companyTotal += t.company_share;
 
-        grandAmount += t.menu_price;
-        grandEmp += t.employee_share;
-        grandComp += t.company_share;
+        for (const item of t.items) {
+
+
+            sessions[session].totalAmount += item.menu_price;
+            sessions[session].employeeTotal += item.employee_share;
+            sessions[session].companyTotal += item.company_share;
+
+            grandAmount += item.menu_price;
+            grandEmp += item.employee_share;
+            grandComp += item.company_share;
+
+        }
     }
 
     return {

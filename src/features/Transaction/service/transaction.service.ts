@@ -1,4 +1,6 @@
-import type { mealType } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import type { PrismaClient, mealType } from '@prisma/client';
+import { ulid } from 'ulid';
 import { prisma } from '../../../libs/lib/prisma.js';
 import {
   ConflictError,
@@ -13,15 +15,73 @@ import {
   getPriceSharesForMenuItem,
 } from '../../shared/helpers/pricing.helper.js';
 import {
-  endOfDay,
   parseDateOnly,
   startOfDay,
   toDateOnlyString,
 } from '../../shared/helpers/date.helper.js';
-import { TransactionDetailResponse, CreateTransactionInput, CreateTransactionContext, TransactionListQuery, TransactionListItem } from '../types/transaction.type.js';
-import { ulid } from 'ulid';
-import { Prisma } from "@prisma/client";
+import type {
+  CreateTransactionContext,
+  CreateTransactionInput,
+  TransactionDetailResponse,
+  TransactionItemResponse,
+  TransactionListItem,
+  TransactionListQuery,
+} from '../types/transaction.type.js';
 
+type PricingDb = PrismaClient | Prisma.TransactionClient;
+
+type TransactionWithRelations = Prisma.TransactionGetPayload<{
+  include: {
+    employee: true;
+    cashier: true;
+    items: {
+      include: {
+        menu_item: true;
+        correction_requests: true;
+      };
+    };
+  };
+}>;
+
+interface PreparedTransactionItem {
+  menuItemId: string;
+  quantity: number;
+  menuPrice: number;
+  employeeShare: number;
+  companyShare: number;
+}
+
+interface CorrectionRequestDb {
+  id: string;
+  status: string;
+}
+
+interface MenuItemDb {
+  id: string;
+  name: string;
+}
+
+interface TransactionItemDb {
+  id: string;
+  menu_item: MenuItemDb;
+  menu_price: number | string;
+  employee_share: number | string;
+  company_share: number | string;
+  quantity?: number;
+  correction_requests: CorrectionRequestDb[];
+}
+
+interface TransactionDb {
+  id: string;
+  employeeId: string;
+  employee: { id: string; full_name: string; Employee_number: string };
+  cashierId: string;
+  cashier: { id: string; email: string };
+  menu_session: mealType;
+  items: TransactionItemDb[];
+  transactionDate: Date;
+  createdAt: Date;
+}
 
 const ensureActiveEmployee = async (employeeId: string) => {
   const employee = await prisma.employees.findUnique({
@@ -41,153 +101,232 @@ const ensureActiveEmployee = async (employeeId: string) => {
 
 const buildMealStatusUpdate = (meal: mealType) => {
   switch (meal) {
-    case "BREAKFAST":
+    case 'BREAKFAST':
       return { breakfast: true };
-
-    case "LUNCH":
+    case 'LUNCH':
       return { lunch: true };
-
-    case "DINNER":
+    case 'DINNER':
       return { dinner: true };
-
     default:
-      throw new ValidationError("Invalid meal session");
+      throw new ValidationError('Invalid meal session');
   }
 };
 
-const mapTransactionDetail = async (
-  transaction: {
-    id: string;
-    menu_session: mealType;
-    menu_price: number;
-    employee_share: number;
-    company_share: number;
-    transactionDate: Date;
-    createdAt: Date;
-    employee: {
-      id: string;
-      full_name: string;
-      Employee_number: string;
-    };
-    menu_item: { id: string; name: string };
-    cashier: { id: string; email: string };
-    correction_requests: { status: string }[];
+const normalizeTransactionItems = (
+  input: CreateTransactionInput
+): Array<{ menuItemId: string; quantity: number }> => {
+  if (input.items?.length) {
+    return input.items.map((item) => ({
+      menuItemId: item.menuItemId,
+      quantity: item.quantity ?? 1,
+    }));
   }
-): Promise<TransactionDetailResponse> => {
-  const hasPendingCorrection = transaction.correction_requests.some(
-    (correction) => correction.status === 'PENDING'
+
+ /*  if (input.menuItemId) {
+    return [
+      {
+        menuItemId: input.menuItemId,
+        quantity: 1,
+      },
+    ];
+  } */
+
+  throw new ValidationError('At least one menu item is required');
+};
+
+const prepareTransactionItems = async (
+  input: CreateTransactionInput,
+  db: PricingDb
+): Promise<PreparedTransactionItem[]> => {
+  const normalizedItems = normalizeTransactionItems(input);
+
+  return Promise.all(
+    normalizedItems.map(async (item) => {
+      const shares = await getPriceSharesForMenuItem(item.menuItemId, db);
+
+      return {
+        menuItemId: item.menuItemId,
+        quantity: item.quantity,
+        menuPrice: shares.menuPrice,
+        employeeShare: shares.employeeShare,
+        companyShare: shares.companyShare,
+      };
+    })
   );
+};
+
+const mapTransactionItem = (
+  item: TransactionItemDb
+): TransactionItemResponse => ({
+  id: item.id,
+  menuItem: {
+    id: item.menu_item.id,
+    name: item.menu_item.name,
+  },
+  menuPrice: Number(item.menu_price),
+  employeeShare: Number(item.employee_share),
+  companyShare: Number(item.company_share),
+  quantity: item.quantity ?? 1,
+});
+
+const calculateTransactionTotals = (
+  items: TransactionItemDb[]
+) => {
+  return items.reduce(
+    (totals, item) => {
+      const quantity = item.quantity ?? 1;
+
+      totals.totalMenuPrice += Number(item.menu_price) * quantity;
+      totals.totalEmployeeShare += Number(item.employee_share) * quantity;
+      totals.totalCompanyShare += Number(item.company_share) * quantity;
+
+      return totals;
+    },
+    {
+      totalMenuPrice: 0,
+      totalEmployeeShare: 0,
+      totalCompanyShare: 0,
+    }
+  );
+};
+
+const hasPendingItemCorrection = (transaction: TransactionDb) =>
+  transaction.items.some((item) =>
+    item.correction_requests.some(
+      (correction: CorrectionRequestDb) => correction.status === 'PENDING'
+    )
+  );
+
+const mapTransactionResponse = (
+  transaction: TransactionDb
+): TransactionDetailResponse => ({
+  id: transaction.id,
+  employee: {
+    id: transaction.employee.id,
+    fullName: transaction.employee.full_name,
+    employeeNumber: transaction.employee.Employee_number,
+  },
+  mealSession: transaction.menu_session,
+  items: transaction.items.map(mapTransactionItem),
+  cashier: {
+    id: transaction.cashier.id,
+    username: getCashierDisplayName(transaction.cashier.email),
+  },
+  transactionDate: toDateOnlyString(transaction.transactionDate),
+  createdAt: transaction.createdAt,
+  correctionStatus: hasPendingItemCorrection(transaction)
+    ? 'PENDING_CORRECTION'
+    : null,
+});
+
+const mapTransactionListItem = (
+  transaction: TransactionDb
+): TransactionListItem => {
+  const totals = calculateTransactionTotals(transaction.items);
 
   return {
     id: transaction.id,
-    employee: {
-      id: transaction.employee.id,
-      fullName: transaction.employee.full_name,
-      employeeNumber: transaction.employee.Employee_number,
-    },
-    menuItem: {
-      id: transaction.menu_item.id,
-      name: transaction.menu_item.name,
-      session: transaction.menu_session,
-    },
-    menuPrice: transaction.menu_price,
-    employeeShare: transaction.employee_share,
-    companyShare: transaction.company_share,
-    cashier: {
-      id: transaction.cashier.id,
-      username: getCashierDisplayName(transaction.cashier.email),
-    },
+    employeeId: transaction.employeeId,
+    employeeNumber: transaction.employee.Employee_number,
+    fullName: transaction.employee.full_name,
+    mealSession: transaction.menu_session,
+    items: transaction.items.map(mapTransactionItem),
+    totalMenuPrice: totals.totalMenuPrice,
+    totalEmployeeShare: totals.totalEmployeeShare,
+    totalCompanyShare: totals.totalCompanyShare,
+    cashierId: transaction.cashierId,
     transactionDate: toDateOnlyString(transaction.transactionDate),
     createdAt: transaction.createdAt,
-    correctionStatus: hasPendingCorrection ? 'PENDING_CORRECTION' : null,
+    correctionStatus: hasPendingItemCorrection(transaction)
+      ? 'PENDING_CORRECTION'
+      : null,
   };
 };
 
+const createTransactionWithItems = async (
+  db: Prisma.TransactionClient,
+  input: CreateTransactionInput,
+  employeeId: string,
+  cashierId: string,
+  transactionDate: Date,
+  createdAt?: Date
+) : Promise<TransactionWithRelations> => {
+  const preparedItems = await prepareTransactionItems(input, db);
 
+  return db.transaction.create({
+    data: {
+      id: ulid(),
+      employeeId,
+      menu_session: input.mealSession,
+      transactionDate,
+      cashierId,
+      ...(createdAt && { createdAt }),
+      items: {
+        create: preparedItems.map((item) => ({
+          id: ulid(),
+          menu_item_id: item.menuItemId,
+          menu_price: item.menuPrice,
+          employee_share: item.employeeShare,
+          company_share: item.companyShare,
+          quantity: item.quantity,
+        })),
+      },
+    },
+    include: {
+      employee: true,
+      cashier: true,
+      items: {
+        include: {
+          menu_item: true,
+          correction_requests: true,
+        },
+      },
+    },
+  });
+};
 
 export const createTransaction = async (
   input: CreateTransactionInput,
   context: CreateTransactionContext
 ) => {
-
   const transactionDate = startOfDay(new Date());
 
-  let createdTransaction: any;
-  let employee: any;
-  let shares: any;
+  let createdTransaction: TransactionWithRelations;
 
   try {
-
     createdTransaction = await prisma.$transaction(async (tx) => {
-
-      //----------------------------------------------------------
-      // Validate employee INSIDE transaction
-      //----------------------------------------------------------
-
-      employee = await tx.employees.findUnique({
+      const employee = await tx.employees.findUnique({
         where: {
           id: input.employeeId,
         },
       });
 
       if (!employee) {
-        throw new NotFoundError("Employee not found");
+        throw new NotFoundError('Employee not found');
       }
 
-      if (employee.status !== "ACTIVE") {
-        throw new ValidationError("Employee is not active");
+      if (employee.status !== 'ACTIVE') {
+        throw new ValidationError('Employee is not active');
       }
 
-      //----------------------------------------------------------
-      // Read menu pricing INSIDE transaction
-      //----------------------------------------------------------
-
-      shares = await getPriceSharesForMenuItem(
-        input.menuItemId,
-        tx
+      const transaction = await createTransactionWithItems(
+        tx,
+        input,
+        input.employeeId,
+        context.cashierId,
+        transactionDate
       );
 
-      //----------------------------------------------------------
-      // Create transaction
-      //----------------------------------------------------------
-
-      const transaction = await tx.transaction.create({
-        data: {
-          id: ulid(),
-          employeeId: input.employeeId,
-          menu_item_id: input.menuItemId,
-          menu_session: input.mealSession,
-          menu_price: shares.menuPrice,
-          employee_share: shares.employeeShare,
-          company_share: shares.companyShare,
-          transactionDate,
-          cashierId: context.cashierId,
-        },
-        include: {
-          employee: true,
-          menu_item: true,
-          cashier: true,
-        },
-      });
-
-      //----------------------------------------------------------
-      // Update daily meal status
-      //----------------------------------------------------------
-
-      const mealUpdate =
-        buildMealStatusUpdate(input.mealSession);
+      const mealUpdate = buildMealStatusUpdate(input.mealSession);
 
       await tx.employee_daily_meal_status.upsert({
-
         where: {
           employeeId_date: {
             employeeId: input.employeeId,
             date: transactionDate,
           },
         },
-
         update: mealUpdate,
-
         create: {
           employeeId: input.employeeId,
           date: transactionDate,
@@ -197,113 +336,79 @@ export const createTransaction = async (
 
       return transaction;
     });
-
   } catch (error) {
-
-    //----------------------------------------------------------
-    // Duplicate meal
-    //----------------------------------------------------------
-
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
-      error.code === "P2002"
+      error.code === 'P2002'
     ) {
-
-      throw new ConflictError(
-        "Meal already registered for this session today"
-      );
+      throw new ConflictError('Meal already registered for this session today');
     }
 
     throw error;
   }
 
-  //----------------------------------------------------------
-  // Audit Log (outside transaction)
-  //----------------------------------------------------------
-
   try {
-
     await createAuditLog({
-
       userId: context.cashierId,
-
-      action: "create_transaction",
-
-      entityType: "Transaction",
-
+      action: 'create_transaction',
+      entityType: 'Transaction',
       entityId: createdTransaction.id,
-
       metadata: {
-
         employeeId: input.employeeId,
-
         mealSession: input.mealSession,
-
-        menuItemId: input.menuItemId,
-
-        menuPrice: shares.menuPrice,
-
-        employeeShare: shares.employeeShare,
-
-        companyShare: shares.companyShare,
+        items: createdTransaction.items.map(
+          (item): {
+            menuItemId: string;
+            menuItemName: string;
+            menuPrice: number | string;
+            employeeShare: number | string;
+            companyShare: number | string;
+            quantity?: number;
+          } => ({
+            menuItemId: item.menu_item_id,
+            menuItemName: item.menu_item.name,
+            menuPrice: item.menu_price,
+            employeeShare: item.employee_share,
+            companyShare: item.company_share,
+            quantity: item.quantity,
+          })
+        ),
       },
-
       ipAddress: context.ipAddress,
-
       userAgent: context.userAgent,
     });
-
-  } catch (err) {
-
-    // logger.error("Failed to write audit log", err);
-
-    // Never fail transaction because audit failed
+  } catch (error) {
+    // audit failures should not roll back the transaction create flow
   }
 
-  //----------------------------------------------------------
-  // Response
-  //----------------------------------------------------------
-
   return {
-
     transactionId: createdTransaction.id,
-
     employee: {
-
-      id: employee.id,
-
-      fullName: employee.full_name,
+      id: createdTransaction.employee.id,
+      fullName: createdTransaction.employee.full_name,
+      employeeNumber: createdTransaction.employee.Employee_number,
     },
-
-    menuItem: {
-
-      id: createdTransaction.menu_item.id,
-
-      name: createdTransaction.menu_item.name,
-    },
-
     mealSession: createdTransaction.menu_session,
-
-    menuPrice: createdTransaction.menu_price,
-
-    employeeShare: createdTransaction.employee_share,
-
-    companyShare: createdTransaction.company_share,
-
-    cashierId: createdTransaction.cashierId,
-
-    transactionDate: toDateOnlyString(
-      createdTransaction.transactionDate
-    ),
-
+    items: createdTransaction.items.map(mapTransactionItem),
+    cashier: {
+      id: createdTransaction.cashier.id,
+      username: getCashierDisplayName(createdTransaction.cashier.email),
+    },
+    transactionDate: toDateOnlyString(createdTransaction.transactionDate),
     createdAt: createdTransaction.createdAt,
+    correctionStatus: null,
   };
 };
+
 export const getTransactions = async (
   query: TransactionListQuery,
   requesterRole: string
 ) => {
-  if (query.cashierId && requesterRole !== 'ADMIN' && requesterRole !== 'SUPER_ADMIN') {
+  if (
+    query.cashierId &&
+    requesterRole !== 'ADMIN' &&
+    requesterRole !== 'SUPER_ADMIN'
+  ) {
     throw new ForbiddenError('Only admins can filter by cashier');
   }
 
@@ -344,29 +449,20 @@ export const getTransactions = async (
       orderBy: { createdAt: 'desc' },
       include: {
         employee: true,
-        menu_item: true,
+        cashier: true,
+        items: {
+          include: {
+            menu_item: true,
+            correction_requests: true,
+          },
+        },
       },
     }),
     prisma.transaction.count({ where }),
   ]);
 
-  const items: TransactionListItem[] = transactions.map((transaction) => ({
-    id: transaction.id,
-    employeeId: transaction.employeeId,
-    employeeNumber: transaction.employee.Employee_number,
-    fullName: transaction.employee.full_name,
-    mealSession: transaction.menu_session,
-    menuItem: transaction.menu_item.name,
-    menuPrice: transaction.menu_price,
-    employeeShare: transaction.employee_share,
-    companyShare: transaction.company_share,
-    cashierId: transaction.cashierId,
-    transactionDate: toDateOnlyString(transaction.transactionDate),
-    createdAt: transaction.createdAt,
-  }));
-
   return {
-    transactions: items,
+    transactions: transactions.map(mapTransactionListItem),
     pagination: {
       page: query.page,
       limit: query.limit,
@@ -375,14 +471,20 @@ export const getTransactions = async (
   };
 };
 
-export const getTransactionById = async (id: string): Promise<TransactionDetailResponse> => {
+export const getTransactionById = async (
+  id: string
+): Promise<TransactionDetailResponse> => {
   const transaction = await prisma.transaction.findUnique({
     where: { id },
     include: {
       employee: true,
-      menu_item: true,
       cashier: true,
-      correction_requests: { where: { status: 'PENDING' } },
+      items: {
+        include: {
+          menu_item: true,
+          correction_requests: true,
+        },
+      },
     },
   });
 
@@ -390,7 +492,7 @@ export const getTransactionById = async (id: string): Promise<TransactionDetailR
     throw new NotFoundError('Transaction not found');
   }
 
-  return mapTransactionDetail(transaction);
+  return mapTransactionResponse(transaction);
 };
 
 export const registerMealTransaction = async (
@@ -414,23 +516,33 @@ export const registerMealTransaction = async (
   });
 
   if (existing) {
-    return { status: 'DUPLICATE_SKIPPED' as const, reason: 'Meal already registered', transactionId: existing.id };
+    return {
+      status: 'DUPLICATE_SKIPPED' as const,
+      reason: 'Meal already registered',
+      transactionId: existing.id,
+    };
   }
 
-  const shares = await getPriceSharesForMenuItem(input.menuItemId, prisma);
+  const preparedItems = await prepareTransactionItems(input, prisma);
 
   const transaction = await prisma.transaction.create({
     data: {
       id: ulid(),
       employeeId: input.employeeId,
-      menu_item_id: input.menuItemId,
       menu_session: input.mealSession,
-      menu_price: shares.menuPrice,
-      employee_share: shares.employeeShare,
-      company_share: shares.companyShare,
       transactionDate: normalizedDate,
       cashierId,
       ...(createdAt && { createdAt }),
+      items: {
+        create: preparedItems.map((item) => ({
+          id: ulid(),
+          menu_item_id: item.menuItemId,
+          menu_price: item.menuPrice,
+          employee_share: item.employeeShare,
+          company_share: item.companyShare,
+          quantity: item.quantity,
+        })),
+      },
     },
   });
 
@@ -443,7 +555,7 @@ export const registerMealTransaction = async (
       metadata: {
         employeeId: input.employeeId,
         mealSession: input.mealSession,
-        menuItemId: input.menuItemId,
+        items: preparedItems,
         source: 'offline_sync',
       },
       ipAddress: auditContext.ipAddress,

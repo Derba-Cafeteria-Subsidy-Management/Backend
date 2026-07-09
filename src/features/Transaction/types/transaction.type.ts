@@ -3,10 +3,15 @@ import type { RequestContext } from '../../auth/types/auth.types.js';
 
 export type MealSession = mealType;
 
+export interface TransactionItemInput {
+  menuItemId: string;
+  quantity?: number | undefined;
+}
+
 export interface CreateTransactionInput {
   employeeId: string;
   mealSession: MealSession;
-  menuItemId: string;
+  items?: TransactionItemInput[] | undefined;
 }
 
 export interface TransactionListQuery {
@@ -24,6 +29,18 @@ export interface CreateTransactionContext extends RequestContext {
   cashierId: string;
 }
 
+export interface TransactionItemResponse {
+  id: string;
+  menuItem: {
+    id: string;
+    name: string;
+  };
+  menuPrice: number;
+  employeeShare: number;
+  companyShare: number;
+  quantity: number;
+}
+
 export interface TransactionDetailResponse {
   id: string;
   employee: {
@@ -31,14 +48,8 @@ export interface TransactionDetailResponse {
     fullName: string;
     employeeNumber: string;
   };
-  menuItem: {
-    id: string;
-    name: string;
-    session: MealSession;
-  };
-  menuPrice: number;
-  employeeShare: number;
-  companyShare: number;
+  mealSession: MealSession;
+  items: TransactionItemResponse[];
   cashier: {
     id: string;
     username: string;
@@ -51,13 +62,15 @@ export interface TransactionDetailResponse {
 export interface TransactionListItem {
   id: string;
   employeeId: string;
+  employeeNumber: string;
   fullName: string;
   mealSession: MealSession;
-  menuItem: string;
-  menuPrice: number;
-  employeeShare: number;
-  companyShare: number;
+  items: TransactionItemResponse[];
+  totalMenuPrice: number;
+  totalEmployeeShare: number;
+  totalCompanyShare: number;
   cashierId: string;
   transactionDate: string;
   createdAt: Date;
+  correctionStatus: 'PENDING_CORRECTION' | null;
 }

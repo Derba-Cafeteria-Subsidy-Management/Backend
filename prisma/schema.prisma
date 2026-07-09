@@ -53,43 +53,41 @@ enum AuditAction {
   SYSTEM_SETTINGS_UPDATED
 }
 
-
 enum FoodType {
   BREAKFAST
   LUNCH
   DINNER
-  Drink
+  DRINK
 }
 
-
 model User {
-  id           String     @id @default(uuid())
+  id              String     @id @default(uuid())
   Employee_number String?    @unique
-  email        String     @unique
-  passwordHash String?
-  role         UserRole
-  status       UserStatus @default(PENDING)
-  invitedById  String?
-  invitedBy    User?      @relation("UserInvites", fields: [invitedById], references: [id], onDelete: SetNull)
-  invitedUsers User[]     @relation("UserInvites")
-  lastLogin    DateTime?
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  email           String     @unique
+  passwordHash    String?
+  role            UserRole
+  status          UserStatus @default(PENDING)
+  invitedById     String?
+  invitedBy       User?      @relation("UserInvites", fields: [invitedById], references: [id], onDelete: SetNull)
+  invitedUsers    User[]     @relation("UserInvites")
+  lastLogin       DateTime?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
 
-  refreshTokens                RefreshToken[]
-  passwordResetTokens          PasswordResetToken[]
-  invitationsSent              Invitation[]           @relation("InvitedBy")
-  auditLogs                    AuditLog[]
-  Transactions                 Transaction[]
-  correctionRequests           correction_requests[]  @relation("RequestedBy")
-  approvedCorrectionRequests   correction_requests[]  @relation("ApprovedCorrectionRequests")
-  rejectedCorrectionRequests   correction_requests[]  @relation("RejectedCorrectionRequests")
-  offlineSyncRecords           offline_sync_records[]
-  priceHistoryCreatedBy          price_history[]        @relation("PriceHistoryCreatedBy")
+  refreshTokens              RefreshToken[]
+  passwordResetTokens        PasswordResetToken[]
+  invitationsSent            Invitation[]           @relation("InvitedBy")
+  auditLogs                  AuditLog[]
+  Transactions               Transaction[]
+  correctionRequests         correction_requests[]  @relation("RequestedBy")
+  approvedCorrectionRequests correction_requests[]  @relation("ApprovedCorrectionRequests")
+  rejectedCorrectionRequests correction_requests[]  @relation("RejectedCorrectionRequests")
+  offlineSyncRecords         offline_sync_records[]
+  priceHistoryCreatedBy      price_history[]        @relation("PriceHistoryCreatedBy")
+  systemSettings             system_settings[]
 
-  @@map("users")
   @@index([role, status])
-  systemSettings system_settings[]
+  @@map("users")
 }
 
 model Invitation {
@@ -133,20 +131,20 @@ model PasswordResetToken {
 }
 
 model menu_items {
-  id          String  @id @default(uuid())
-  name        String
+  id   String @id @default(uuid())
+  name String
 
   status MenuItemStatus @default(ACTIVE)
 
-  mealtype     FoodType 
+  mealtype FoodType
 
-  createdAt    DateTime        @default(now())
-  updatedAt    DateTime        @updatedAt
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
   PriceHistory price_history[]
-  transactions Transaction[]
+  transactions TransactionItem[]
 
-  @@map("menu_items")
   @@index([status])
+  @@map("menu_items")
 }
 
 model price_history {
@@ -161,43 +159,38 @@ model price_history {
 
   createdAt DateTime @default(now())
 
-  @@map("price_history")
   @@index([menuItemId, effctive_from])
   @@index([menuItemId, effective_to])
+  @@map("price_history")
 }
 
-
 model Device {
+  id String @id @default(cuid())
 
-  id          String @id @default(cuid())
+  code String @unique
 
-  code        String @unique
+  name String
 
-  name        String
+  provider DeviceProvider
 
-  provider    DeviceProvider
+  ipAddress String?
 
-  ipAddress   String?
+  location String?
 
-  location    String?
+  status DeviceStatus
 
-  status      DeviceStatus
+  createdAt DateTime @default(now())
 
-  createdAt   DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  updatedAt   DateTime @updatedAt
+  mappings BiometricMapping[]
 
-  mappings    BiometricMapping[]
+  scanLogs ScanLog[]
 
-  scanLogs    ScanLog[]
   @@map("devices")
 }
 
-
-
-
 model BiometricMapping {
-
   id String @id @default(cuid())
 
   employeeId String
@@ -206,16 +199,15 @@ model BiometricMapping {
 
   deviceUserId String
 
-  employee employees @relation(fields:[employeeId],references:[id])
+  employee employees @relation(fields: [employeeId], references: [id])
 
-  device Device @relation(fields:[deviceId],references:[id])
+  device Device @relation(fields: [deviceId], references: [id])
 
-  @@unique([deviceId,deviceUserId])
+  @@unique([deviceId, deviceUserId])
   @@map("biometric_mappings")
 }
 
 model ScanLog {
-
   id String @id @default(cuid())
 
   deviceId String
@@ -228,29 +220,25 @@ model ScanLog {
 
   scannedAt DateTime
 
-  device Device @relation(fields:[deviceId],references:[id])
+  device Device @relation(fields: [deviceId], references: [id])
+
   @@map("scan_logs")
 }
 
-
 enum DeviceProvider {
+  MOCK
 
-    MOCK
+  ZKTECO
 
-    ZKTECO
-
-    SUPREMA
-
+  SUPREMA
 }
 
 enum DeviceStatus {
+  ONLINE
 
-    ONLINE
+  OFFLINE
 
-    OFFLINE
-
-    DISABLED
-
+  DISABLED
 }
 
 enum EmployeeStatus {
@@ -265,101 +253,127 @@ enum mealType {
   DINNER
 }
 
-
-
-
 model employees {
   id              String         @id @default(uuid())
   Employee_number String         @unique
   photo           String?
   full_name       String
-  fingerprint_id  String?         @unique 
+  fingerprint_id  String?        @unique
   status          EmployeeStatus @default(ACTIVE)
   created_at      DateTime       @default(now())
 
-  updated_at   DateTime      @updatedAt
-  Transactions Transaction[]
+  updated_at                DateTime                     @updatedAt
+  Transactions              Transaction[]
+  biometricMappings         BiometricMapping[]
+  employeeDailyMealStatuses employee_daily_meal_status[]
 
-  @@map("employees")
   @@index([status])
   @@index([full_name])
-  biometricMappings BiometricMapping[]
-  employeeDailyMealStatuses employee_daily_meal_status[]
+  @@map("employees")
+}
+
+model TransactionItem {
+  id String @id
+
+  transactionId String
+
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  menu_item_id String
+
+  menu_item menu_items @relation(fields: [menu_item_id], references: [id], onDelete: Cascade)
+
+  menu_price Float
+
+  employee_share Float
+
+  company_share Float
+
+  quantity Int @default(1)
+
+  createdAt DateTime @default(now())
+
+  correction_requests correction_requests[]
+
+  @@index([transactionId])
+  @@map("transaction_items")
 }
 
 model Transaction {
   id String @id
-  employeeId      String
-  employee        employees @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  menu_item_id    String
-  menu_item       menu_items @relation(fields: [menu_item_id], references: [id], onDelete: Cascade)
-  menu_session    mealType
-  menu_price      Float
-  employee_share  Float
-  company_share   Float
-  transactionDate DateTime @db.Date
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  cashierId       String
-  cashier         User     @relation(fields: [cashierId], references: [id], onDelete: Cascade)
 
-  correction_requests  correction_requests[]
+  employeeId String
+
+  employee employees @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  menu_session mealType
+
+  transactionDate DateTime @db.Date
+
+  createdAt DateTime @default(now())
+
+  updatedAt DateTime @updatedAt
+
+  cashierId String
+
+  cashier User @relation(fields: [cashierId], references: [id], onDelete: Cascade)
+
+  items TransactionItem[]
+
   offline_sync_records offline_sync_records[]
 
   @@unique([employeeId, menu_session, transactionDate], name: "unique_meal_per_day")
   @@index([transactionDate])
   @@index([cashierId, transactionDate])
-  @@index([cashierId])
   @@index([employeeId, transactionDate])
   @@index([transactionDate, menu_session])
   @@map("transactions")
 }
 
-
 model employee_daily_meal_status {
-  id           String   @id @default(cuid())
-  employeeId   String
-  date         DateTime
+  id         String   @id @default(cuid())
+  employeeId String
+  date       DateTime
 
-  breakfast    Boolean  @default(false)
-  lunch        Boolean  @default(false)
-  dinner       Boolean  @default(false)
+  breakfast Boolean @default(false)
+  lunch     Boolean @default(false)
+  dinner    Boolean @default(false)
 
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  employee     employees @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employee employees @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
-  @@unique([employeeId, date])   // 🔥 prevents duplicates per day
+  @@unique([employeeId, date]) // 🔥 prevents duplicates per day
   @@index([date])
   @@index([employeeId, date])
 }
 
 model correction_requests {
-  id String @id
-  transactionId String
-  transaction   Transaction             @relation(fields: [transactionId], references: [id], onDelete: Cascade)
-  requestedById String
-  requestedBy   User                    @relation("RequestedBy", fields: [requestedById], references: [id], onDelete: Cascade)
-  reason        String
-  status        CorrectionRequestStatus @default(PENDING)
-  createdAt     DateTime                @default(now())
-  updatedAt     DateTime                @updatedAt
+  id                String                  @id
+  transactionItemId String
+  transactionItem   TransactionItem         @relation(fields: [transactionItemId], references: [id], onDelete: Cascade)
+  requestedById     String
+  requestedBy       User                    @relation("RequestedBy", fields: [requestedById], references: [id], onDelete: Cascade)
+  reason            String
+  status            CorrectionRequestStatus @default(PENDING)
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
 
   old_values Json?
   new_values Json?
 
-  approvedById     String?
-  approvedBy       User?     @relation("ApprovedCorrectionRequests", fields: [approvedById], references: [id], onDelete: SetNull)
-  approvedAt       DateTime?
-  rejectedById     String?
-  rejectedBy       User?     @relation("RejectedCorrectionRequests", fields: [rejectedById], references: [id], onDelete: SetNull)
-  rejectedAt       DateTime?
-  rejectionReason  String?
+  approvedById    String?
+  approvedBy      User?     @relation("ApprovedCorrectionRequests", fields: [approvedById], references: [id], onDelete: SetNull)
+  approvedAt      DateTime?
+  rejectedById    String?
+  rejectedBy      User?     @relation("RejectedCorrectionRequests", fields: [rejectedById], references: [id], onDelete: SetNull)
+  rejectedAt      DateTime?
+  rejectionReason String?
 
   @@index([status])
   @@index([createdAt])
-  @@index([status, transactionId])
+  @@index([status, transactionItemId])
   @@index([status, createdAt])
   @@map("correction_requests")
 }
@@ -379,13 +393,13 @@ model Subsidy_config {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  @@map("subsidy_config")
   @@index([effective_from])
   @@index([effective_to])
+  @@map("subsidy_config")
 }
 
 model offline_sync_records {
-  id String @id
+  id            String       @id
   localId       String       @unique
   stationId     String
   transactionId String?
@@ -398,9 +412,7 @@ model offline_sync_records {
 
   @@index([stationId])
   @@index([cashierId])
-
   @@index([syncStatus])
-
   @@index([createdAt])
   @@map("offline_sync_records")
 }
@@ -412,7 +424,7 @@ model system_settings {
   employeeSearchEnabled Boolean @default(true)
 
   updatedById String?
-  updatedBy User? @relation(fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedBy   User?   @relation(fields: [updatedById], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -421,7 +433,7 @@ model system_settings {
 }
 
 model AuditLog {
-  id String @id
+  id         String      @id
   userId     String?
   user       User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
   action     AuditAction

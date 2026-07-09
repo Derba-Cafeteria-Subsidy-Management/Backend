@@ -1,11 +1,19 @@
 import { z } from 'zod';
 
 const mealSessionSchema = z.enum(['BREAKFAST', 'LUNCH', 'DINNER']);
+const transactionItemSchema = z.object({
+  menuItemId: z.string().uuid('Invalid menu item ID'),
+  quantity: z.coerce.number().int().min(1, 'Quantity must be at least 1').default(1),
+});
 
 export const createTransactionSchema = z.object({
   employeeId: z.string().uuid('Invalid employee ID'),
   mealSession: mealSessionSchema,
-  menuItemId: z.string().uuid('Invalid menu item ID'),
+  items: z.array(transactionItemSchema).min(1, 'At least one menu item is required').optional(),
+});
+
+export const transactionItemIdSchema = z.object({
+  id: z.string().uuid('Invalid transaction item ID'),
 });
 
 export const transactionListQuerySchema = z.object({

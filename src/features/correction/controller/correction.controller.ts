@@ -33,7 +33,16 @@ export const getCorrectionsHandler = async (
 ) => {
   try {
     const query = res.locals.query as CorrectionListQuery;
+
+    // if user role is cashier, only allow them to see their own correction requests
+    if (req.user!.role === 'CASHIER') {
+      query.cashierId = req.user!.userId;
+    }
+
+    
     const data = await getCorrectionRequests(query);
+
+    
 
     res.status(200).json({ success: true, data });
   } catch (error) {

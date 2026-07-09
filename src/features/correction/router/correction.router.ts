@@ -71,35 +71,97 @@ correctionRouter.post(
  * /api/corrections:
  *   get:
  *     summary: List correction requests
- *     description: Returns paginated correction requests.
+ *     description: |
+ *       Returns paginated correction history.
+ *
+ *       Behavior:
+ *       - ADMIN and SUPER_ADMIN can view all correction requests.
+ *       - CASHIER can only view their own correction requests.
+ *       - If status is not provided, all statuses are returned.
+ *       - Multiple statuses can be provided using comma separation.
+ *         Example: APPROVED,REJECTED
+ *
  *     tags:
  *       - Corrections
+ *
  *     security:
  *       - bearerAuth: []
+ *
  *     parameters:
+ *
  *       - in: query
  *         name: status
+ *         required: false
+ *         description: |
+ *           Filter by correction status.
+ *           Supports multiple values separated by comma.
+ *           Example: APPROVED,REJECTED
  *         schema:
  *           type: string
- *           enum: [PENDING, APPROVED, REJECTED]
+ *           example: APPROVED,REJECTED
+ *           enum:
+ *             - PENDING
+ *             - APPROVED
+ *             - REJECTED
+ *
+ *
  *       - in: query
  *         name: from
+ *         required: false
+ *         description: Filter corrections created from this date.
  *         schema:
  *           type: string
  *           format: date
+ *           example: 2026-01-01
+ *
+ *
  *       - in: query
  *         name: to
+ *         required: false
+ *         description: Filter corrections created until this date.
  *         schema:
  *           type: string
  *           format: date
+ *           example: 2026-01-31
+ *
+ *
+ *       - in: query
+ *         name: page
+ *         required: false
+ *         description: Page number.
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *
+ *
+ *       - in: query
+ *         name: limit
+ *         required: false
+ *         description: Number of records per page.
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *
+ *
  *     responses:
+ *
  *       200:
  *         description: Correction requests retrieved successfully.
+ *
+ *       401:
+ *         description: Unauthorized.
+ *
+ *       403:
+ *         description: Forbidden.
  */
 correctionRouter.get(
   '/',
   authenticate,
-  authorize('ADMIN', 'SUPER_ADMIN', 'CASHIER'),
+  authorize(
+    'ADMIN',
+    'SUPER_ADMIN',
+    'CASHIER'
+  ),
   validateQuery(correctionListQuerySchema),
   getCorrectionsHandler
 );
