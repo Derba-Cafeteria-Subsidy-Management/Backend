@@ -11,7 +11,7 @@ export const payrollHandler = async (
   try {
     const { from, to } = req.query as any;
 
-    await assertNoPendingCorrections(from, to);
+    // await assertNoPendingCorrections(from, to);
 
     const data = await getPayrollReport(from, to);
 

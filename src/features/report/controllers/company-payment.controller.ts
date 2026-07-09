@@ -11,7 +11,7 @@ export const companyPaymentHandler = async (
   try {
     const { from, to } = req.query as any;
 
-    await assertNoPendingCorrections(from, to);
+    // await assertNoPendingCorrections(from, to);
 
     const data = await getCompanyPaymentReport(from, to);
 

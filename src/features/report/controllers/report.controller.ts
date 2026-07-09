@@ -11,7 +11,7 @@ export const getDailySummaryHandler = async (
   try {
     const { date } = req.query as { date: string };
 
-    await assertNoPendingCorrections(date as string, date as string);
+    // await assertNoPendingCorrections(date as string, date as string);
 
     const data = await getDailySummary(date);
 

@@ -371,7 +371,7 @@ export const addPriceVersion = async (
 
   await createAuditLog({
     userId: context.AdminId,
-    action: 'MENU_ITEM_UPDATED',
+    action: 'PRICE_HISTORY_CREATED',
     entityType: 'Menu_items',
     entityId: menuId,
     metadata: {
