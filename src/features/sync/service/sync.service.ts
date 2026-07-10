@@ -58,7 +58,7 @@ export const processOfflineBatch = async (
       {
         employeeId: item.employeeId,
         mealSession: item.mealSession,
-        menuItemId: item.menuItemId,
+       items: []
       },
       context.cashierId,
       offlineAt,
