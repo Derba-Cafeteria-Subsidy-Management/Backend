@@ -148,8 +148,8 @@ const prepareTransactionItems = async (
         menuItemId: item.menuItemId,
         quantity: item.quantity,
         menuPrice: shares.menuPrice,
-        employeeShare: shares.employeeShare,
-        companyShare: shares.companyShare,
+        employeeShare: shares.companyShare,
+        companyShare: shares.employeeShare,
       };
     })
   );

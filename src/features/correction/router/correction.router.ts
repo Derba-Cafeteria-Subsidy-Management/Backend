@@ -226,7 +226,7 @@ correctionRouter.post(
  *         description: Correction rejected successfully.
  */
 correctionRouter.post(
-  '/:id/rejection',
+  '/:id/reject',
   authenticate,
   authorize('ADMIN', 'SUPER_ADMIN'),
   validateParams(correctionIdParamSchema),
