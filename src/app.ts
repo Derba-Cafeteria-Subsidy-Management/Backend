@@ -25,14 +25,23 @@ export const app = express();
 
 app.set('trust proxy', 1);
 
+// app.use(cors({
+//   origin: (_origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+//     callback(null, true);
+//   },
+//    credentials: true,
+// }));
+
 app.use(cors({
-  origin: (_origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
-    callback(null, true);
-  },
-  credentials: true,
+  origin: true,
+  credentials:true,
 }));
 
-app.use(helmet());
+app.use(
+  helmet({
+    crossOriginResourcePolicy: false,
+  })
+);
 app.use(cookieParser());
 app.use(express.json());
 
