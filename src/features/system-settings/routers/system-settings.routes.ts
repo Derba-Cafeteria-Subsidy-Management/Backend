@@ -42,7 +42,7 @@ export const systemrouter = Router();
 systemrouter.get(
   "/authentication",
   authenticate,
-  authorize("ADMIN","SUPER_ADMIN"),
+  authorize("ADMIN","SUPER_ADMIN","CASHIER"),
   getAuthenticationSettingsHandler
 );
 
