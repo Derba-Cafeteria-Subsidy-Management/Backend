@@ -449,6 +449,8 @@ export const getCorrectionRequests = async (
         employee:
           item.transactionItem.transaction.employee.full_name,
 
+        employeeNumber:item.transactionItem.transaction.employee.Employee_number,
+
 
         menuItem:
           item.transactionItem.menu_item.name,
@@ -460,6 +462,8 @@ export const getCorrectionRequests = async (
 
         transactionId:
           item.transactionItem.transaction.id,
+
+        transactiondate: item.transactionItem.transaction.transactionDate,
 
 
         createdAt: item.createdAt,
