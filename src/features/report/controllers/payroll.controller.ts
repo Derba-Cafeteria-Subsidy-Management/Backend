@@ -11,13 +11,16 @@ export const payrollHandler = async (
   try {
     const { from, to } = req.query as any;
 
+    const page = Number(req.query.page ?? 1);
+    const limit = Number(req.query.limit ?? 20);
+
     // await assertNoPendingCorrections(from, to);
 
-    const data = await getPayrollReport(from, to);
+    const data = await getPayrollReport(from, to , page, limit);
 
     res.status(200).json({
       success: true,
-      data,
+      ...data,
     });
   } catch (err) {
     next(err);

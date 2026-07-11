@@ -31,7 +31,7 @@ export const payrollExportHandler = async (req: Request, res: Response) => {
 
   const data = await getPayrollReport(from, to);
 
-  const workbook = await generatePayrollExcel(data);
+  const workbook = await generatePayrollExcel(data.data);
 
   res.setHeader(
     'Content-Type',

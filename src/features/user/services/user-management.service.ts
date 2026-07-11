@@ -35,6 +35,12 @@ export const getUsers = async (
         status: true,
         lastLogin: true,
         invitedById: true,
+        invitedBy: {
+          select: {
+            id: true,
+            email: true,
+          },
+        }
       },
     }),
 
@@ -50,7 +56,7 @@ export const getUsers = async (
       role: user.role,
       status: user.status,
       lastLogin: user.lastLogin,
-      invitedBy: user.invitedById,
+      invitedBy:'Super Admin',
     })),
 
     pagination: {
