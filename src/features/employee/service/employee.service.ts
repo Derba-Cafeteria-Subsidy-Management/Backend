@@ -8,6 +8,7 @@ import { invalidateEmployeeCache } from "../helpers/cache-invalidation.helper.js
 import { CreateEmployeeContext, ImportEmployeeError, ImportEmployeeRow } from "../types/employee.types.js";
 import XLSX from "xlsx";
 import { NotFoundError } from "../../../errors/errors/apperror.js";
+import { getAuthenticationSettings } from "../../system-settings/service/system-settings.service.js";
 
 const EMPLOYEE_DETAIL_CACHE_TTL = 600;
 
@@ -102,6 +103,13 @@ export const getEmployees = async (
 export const SearchEmployeeBy = async (
     employeeNumber: string
 ) => {
+
+    // check on getAuthenticationSettings employeeSearchEnabled
+
+
+
+
+
 
     const cacheKey =
         buildEmployeeKey(employeeNumber);
@@ -511,217 +519,217 @@ export const fingerprintScan =
 
 
 export const previewEmployeeImport = async (
-  file: Express.Multer.File
+    file: Express.Multer.File
 ) => {
-  //--------------------------------------------------
-  // Read workbook
-  //--------------------------------------------------
-
-  const workbook = XLSX.read(file.buffer, {
-    type: "buffer",
-  });
-
-  if (workbook.SheetNames.length === 0) {
-    throw new Error("Excel file is empty");
-  }
-
-  const firstSheet = workbook.SheetNames[0];
-
-  if (!firstSheet) {
-    throw new Error("Excel file is empty");
-  }
-
-  const sheet = workbook.Sheets[firstSheet];
-
-  if (!sheet) {
-    throw new Error("Excel file is empty");
-  }
-
-  //--------------------------------------------------
-  // Read rows
-  //--------------------------------------------------
-
-  const rows = XLSX.utils.sheet_to_json<any>(sheet, {
-    defval: "",
-    raw: false,
-  });
-
-  if (rows.length === 0) {
-    throw new Error("Excel file contains no data.");
-  }
-
-  //--------------------------------------------------
-  // Collect employee numbers
-  //--------------------------------------------------
-
-  const employeeNumbers = rows
-    .map((row) => String(row.EmployeeNumber ?? "").trim())
-    .filter(Boolean);
-
-  //--------------------------------------------------
-  // Get existing employees (ONE query)
-  //--------------------------------------------------
-
-  const existingEmployees = await prisma.employees.findMany({
-    where: {
-      Employee_number: {
-        in: employeeNumbers,
-      },
-    },
-    select: {
-      Employee_number: true,
-    },
-  });
-
-  const existingEmployeeNumbers = new Set(
-    existingEmployees.map((e) => e.Employee_number.toLowerCase())
-  );
-
-  //--------------------------------------------------
-  // Validation containers
-  //--------------------------------------------------
-
-  const validRows: ImportEmployeeRow[] = [];
-
-  const errors: ImportEmployeeError[] = [];
-
-  const seenEmployeeNumbers = new Set<string>();
-
-  //--------------------------------------------------
-  // Validate rows
-  //--------------------------------------------------
-
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i];
-
-    const excelRow = i + 2;
-
-    const employeeNumber = String(
-      row.EmployeeNumber ?? ""
-    ).trim();
-
-    const fullName = String(
-      row.fullName ?? ""
-    ).trim();
-
-    const fingerprintId = String(
-      row.fingerprintId ?? ""
-    ).trim();
-
-    const photo = String(
-      row.photo ?? ""
-    ).trim();
-
     //--------------------------------------------------
-    // Required fields
+    // Read workbook
     //--------------------------------------------------
 
-    if (!employeeNumber) {
-      errors.push({
-        row: excelRow,
-        field: "EmployeeNumber",
-        message: "Required",
-      });
+    const workbook = XLSX.read(file.buffer, {
+        type: "buffer",
+    });
 
-      continue;
+    if (workbook.SheetNames.length === 0) {
+        throw new Error("Excel file is empty");
     }
 
-    if (!fullName) {
-      errors.push({
-        row: excelRow,
-        field: "fullName",
-        message: "Required",
-      });
+    const firstSheet = workbook.SheetNames[0];
 
-      continue;
+    if (!firstSheet) {
+        throw new Error("Excel file is empty");
+    }
+
+    const sheet = workbook.Sheets[firstSheet];
+
+    if (!sheet) {
+        throw new Error("Excel file is empty");
     }
 
     //--------------------------------------------------
-    // Duplicate inside Excel
+    // Read rows
     //--------------------------------------------------
 
-    const normalizedEmployeeNumber =
-      employeeNumber.toLowerCase();
+    const rows = XLSX.utils.sheet_to_json<any>(sheet, {
+        defval: "",
+        raw: false,
+    });
 
-    if (
-      seenEmployeeNumbers.has(
-        normalizedEmployeeNumber
-      )
-    ) {
-      errors.push({
-        row: excelRow,
-        field: "EmployeeNumber",
-        message: "Duplicate employee in Excel",
-      });
-
-      continue;
+    if (rows.length === 0) {
+        throw new Error("Excel file contains no data.");
     }
 
-    seenEmployeeNumbers.add(
-      normalizedEmployeeNumber
+    //--------------------------------------------------
+    // Collect employee numbers
+    //--------------------------------------------------
+
+    const employeeNumbers = rows
+        .map((row) => String(row.EmployeeNumber ?? "").trim())
+        .filter(Boolean);
+
+    //--------------------------------------------------
+    // Get existing employees (ONE query)
+    //--------------------------------------------------
+
+    const existingEmployees = await prisma.employees.findMany({
+        where: {
+            Employee_number: {
+                in: employeeNumbers,
+            },
+        },
+        select: {
+            Employee_number: true,
+        },
+    });
+
+    const existingEmployeeNumbers = new Set(
+        existingEmployees.map((e) => e.Employee_number.toLowerCase())
     );
 
     //--------------------------------------------------
-    // Already exists in database
+    // Validation containers
     //--------------------------------------------------
 
-    if (
-      existingEmployeeNumbers.has(
-        normalizedEmployeeNumber
-      )
-    ) {
-      errors.push({
-        row: excelRow,
-        field: "EmployeeNumber",
-        message: "Employee already exists",
-      });
+    const validRows: ImportEmployeeRow[] = [];
 
-      continue;
+    const errors: ImportEmployeeError[] = [];
+
+    const seenEmployeeNumbers = new Set<string>();
+
+    //--------------------------------------------------
+    // Validate rows
+    //--------------------------------------------------
+
+    for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+
+        const excelRow = i + 2;
+
+        const employeeNumber = String(
+            row.EmployeeNumber ?? ""
+        ).trim();
+
+        const fullName = String(
+            row.fullName ?? ""
+        ).trim();
+
+        const fingerprintId = String(
+            row.fingerprintId ?? ""
+        ).trim();
+
+        const photo = String(
+            row.photo ?? ""
+        ).trim();
+
+        //--------------------------------------------------
+        // Required fields
+        //--------------------------------------------------
+
+        if (!employeeNumber) {
+            errors.push({
+                row: excelRow,
+                field: "EmployeeNumber",
+                message: "Required",
+            });
+
+            continue;
+        }
+
+        if (!fullName) {
+            errors.push({
+                row: excelRow,
+                field: "fullName",
+                message: "Required",
+            });
+
+            continue;
+        }
+
+        //--------------------------------------------------
+        // Duplicate inside Excel
+        //--------------------------------------------------
+
+        const normalizedEmployeeNumber =
+            employeeNumber.toLowerCase();
+
+        if (
+            seenEmployeeNumbers.has(
+                normalizedEmployeeNumber
+            )
+        ) {
+            errors.push({
+                row: excelRow,
+                field: "EmployeeNumber",
+                message: "Duplicate employee in Excel",
+            });
+
+            continue;
+        }
+
+        seenEmployeeNumbers.add(
+            normalizedEmployeeNumber
+        );
+
+        //--------------------------------------------------
+        // Already exists in database
+        //--------------------------------------------------
+
+        if (
+            existingEmployeeNumbers.has(
+                normalizedEmployeeNumber
+            )
+        ) {
+            errors.push({
+                row: excelRow,
+                field: "EmployeeNumber",
+                message: "Employee already exists",
+            });
+
+            continue;
+        }
+
+        //--------------------------------------------------
+        // Valid row
+        //--------------------------------------------------
+
+        validRows.push({
+            row: excelRow,
+            EmployeeNumber: employeeNumber,
+            fullName,
+            fingerprintId: fingerprintId || null,
+            photo: photo || null,
+        });
     }
 
     //--------------------------------------------------
-    // Valid row
+    // Return validation errors
     //--------------------------------------------------
 
-    validRows.push({
-      row: excelRow,
-      EmployeeNumber: employeeNumber,
-      fullName,
-      fingerprintId: fingerprintId || null,
-      photo: photo || null,
-    });
-  }
+    if (errors.length > 0) {
+        return {
+            previewToken: null,
+            totalRows: rows.length,
+            validRows,
+            validCount: validRows.length,
+            errorCount: errors.length,
+            errors,
+        };
+    }
 
-  //--------------------------------------------------
-  // Return validation errors
-  //--------------------------------------------------
+    //--------------------------------------------------
+    // Save preview
+    //--------------------------------------------------
 
-  if (errors.length > 0) {
+    const previewToken = saveImportPreview(
+        validRows,
+        "EMPLOYEE"
+    );
+
     return {
-      previewToken: null,
-      totalRows: rows.length,
-      validRows,
-      validCount: validRows.length,
-      errorCount: errors.length,
-      errors,
+        previewToken,
+        totalRows: rows.length,
+        validRows,
+        validCount: validRows.length,
+        errorCount: 0,
+        errors: [],
     };
-  }
-
-  //--------------------------------------------------
-  // Save preview
-  //--------------------------------------------------
-
-  const previewToken = saveImportPreview(
-    validRows,
-    "EMPLOYEE"
-  );
-
-  return {
-    previewToken,
-    totalRows: rows.length,
-    validRows,
-    validCount: validRows.length,
-    errorCount: 0,
-    errors: [],
-  };
 };
