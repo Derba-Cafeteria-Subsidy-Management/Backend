@@ -88,6 +88,16 @@ export const getEmployeeByNUmberController =
             });
         }
 
+        const isCashier = req.user!.role === "CASHIER";
+        const settings = await getSystemSettings();
+
+        if (isCashier && !settings.employeeSearchEnabled) {
+            return res.status(403).json({
+                success: false,
+                message: "Employee search is disabled for cashiers",
+            });
+        }
+
         const data =
             await SearchEmployeeBy(req.params.employee_Number);
 

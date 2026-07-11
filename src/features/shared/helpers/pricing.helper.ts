@@ -59,6 +59,37 @@ export const getActiveMenuPrice = async (
   return priceRecord.price;
 };
 
+export const getMenuPriceAtDate = async (
+  db: PrismaExecutor,
+  menuItemId: string,
+  targetDate: Date
+): Promise<number> => {
+  const menuItem = await db.menu_items.findUnique({
+    where: { id: menuItemId },
+  });
+
+  if (!menuItem) {
+    throw new NotFoundError('Menu item not found');
+  }
+
+  const priceRecord = await db.price_history.findFirst({
+    where: {
+      menuItemId,
+      effctive_from: { lte: targetDate },
+      OR: [
+        { effective_to: null },
+        { effective_to: { gte: targetDate } },
+      ],
+    },
+    orderBy: { effctive_from: 'desc' },
+  });
+
+  if (!priceRecord) {
+    throw new ValidationError('No price record found for menu item at the specified date');
+  }
+
+  return priceRecord.price;
+};
 
 
 export const getActiveSubsidyConfig = async () => {
@@ -91,6 +122,25 @@ export const getActiveSubsidyConfig = async () => {
 
 };
 
+export const getSubsidyConfigAtDate = async (targetDate: Date) => {
+  const subsidy = await prisma.subsidy_config.findFirst({
+    where: {
+      effective_from: { lte: targetDate },
+      OR: [
+        { effective_to: null },
+        { effective_to: { gte: targetDate } },
+      ],
+    },
+    orderBy: { effective_from: 'desc' },
+  });
+
+  if (!subsidy) {
+    throw new NotFoundError('No subsidy configuration found at the specified date');
+  }
+
+  return subsidy;
+};
+
 export const calculateShares = (
   menuPrice: number,
   employeePercent: number,
@@ -108,10 +158,15 @@ export const calculateShares = (
 
 export const getPriceSharesForMenuItem = async (
   menuItemId: string,
-  db: PrismaExecutor
+  db: PrismaExecutor,
+  targetDate?: Date
 ): Promise<PriceShares> => {
-  const menuPrice = await getActiveMenuPrice(db, menuItemId);
-  const subsidy = await getActiveSubsidyConfig();
+  const menuPrice = targetDate
+    ? await getMenuPriceAtDate(db, menuItemId, targetDate)
+    : await getActiveMenuPrice(db, menuItemId);
+  const subsidy = targetDate
+    ? await getSubsidyConfigAtDate(targetDate)
+    : await getActiveSubsidyConfig();
 
   return calculateShares(menuPrice, subsidy.employee_share, subsidy.company_share);
 };

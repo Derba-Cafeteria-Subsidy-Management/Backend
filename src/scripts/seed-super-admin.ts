@@ -2,6 +2,7 @@ import { prisma } from '../libs/lib/prisma.js';
 import { hashPassword } from '../features/auth/service/password.service.js';
 import { UserRole, UserStatus } from '@prisma/client';
 import { LoginInput } from '../features/auth/types/auth.types.js';
+import { ConflictError } from '../errors/errors/apperror.js';
 
 /**
  * One-time bootstrap script for the first SUPER_ADMIN account.
@@ -13,11 +14,17 @@ import { LoginInput } from '../features/auth/types/auth.types.js';
  */
 
 export async function seedSuperAdmin(input :  LoginInput ): Promise<void> {
-  // const email = process.env.SUPER_ADMIN_EMAIL?.trim().toLowerCase();
-  // const password = process.env.SUPER_ADMIN_PASSWORD;
-
   if (!input.email || !input.password) {
     throw new Error('SUPER_ADMIN_EMAIL and SUPER_ADMIN_PASSWORD must be set');
+  }
+
+  // Check if any SUPER_ADMIN user already exists globally in the database
+  const globalSuperAdmin = await prisma.user.findFirst({
+    where: { role: UserRole.SUPER_ADMIN }
+  });
+
+  if (globalSuperAdmin) {
+    throw new ConflictError('A Super Admin is already registered in the system.');
   }
 
   const existing = await prisma.user.findUnique({ where: { email: input.email } });

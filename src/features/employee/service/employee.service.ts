@@ -7,8 +7,9 @@ import { buildEmployeeKey, buildEmployeeListKey } from "../helpers/employee-cach
 import { invalidateEmployeeCache } from "../helpers/cache-invalidation.helper.js";
 import { CreateEmployeeContext, ImportEmployeeError, ImportEmployeeRow } from "../types/employee.types.js";
 import XLSX from "xlsx";
-import { NotFoundError } from "../../../errors/errors/apperror.js";
+import { ConflictError, NotFoundError } from "../../../errors/errors/apperror.js";
 import { getAuthenticationSettings } from "../../system-settings/service/system-settings.service.js";
+import { Prisma } from "@prisma/client";
 
 const EMPLOYEE_DETAIL_CACHE_TTL = 600;
 
@@ -383,9 +384,21 @@ export const deleteEmployee = async (
         );
     }
 
-    await prisma.employees.delete({
-        where: { id },
-    });
+    try {
+        await prisma.employees.delete({
+            where: { id },
+        });
+    } catch (error) {
+        if (
+            error instanceof Prisma.PrismaClientKnownRequestError &&
+            error.code === 'P2003'
+        ) {
+            throw new ConflictError(
+                'Cannot delete employee with transaction history. Deactivate them instead.'
+            );
+        }
+        throw error;
+    }
 
     await createAuditLog({
         userId: context.AdminId,

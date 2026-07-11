@@ -5,6 +5,21 @@ import { getPayrollReport } from './payroll.service';
 import { getCompanyPaymentReport } from './company-payment.service';
 
 
+const sanitizeCellValue = (value: any): any => {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (
+      trimmed.startsWith('=') ||
+      trimmed.startsWith('+') ||
+      trimmed.startsWith('-') ||
+      trimmed.startsWith('@')
+    ) {
+      return `'${value}`;
+    }
+  }
+  return value;
+};
+
 export const generatePayrollExcel = async (data: any[]) => {
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet('Payroll');
@@ -17,7 +32,13 @@ export const generatePayrollExcel = async (data: any[]) => {
     { header: 'Employee Share', key: 'employeeShare' },
   ];
 
-  sheet.addRows(data);
+  const sanitized = data.map((row) => ({
+    ...row,
+    employeeId: sanitizeCellValue(row.employeeId),
+    employeeName: sanitizeCellValue(row.employeeName),
+  }));
+
+  sheet.addRows(sanitized);
 
   return workbook;
 };

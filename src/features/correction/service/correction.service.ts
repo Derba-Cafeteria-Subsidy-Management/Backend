@@ -34,6 +34,7 @@ import { getMenuById } from '../../menu/service/menu.service.js';
 
 const buildMenuSnapshot = async (
   menuItemId: string,
+  targetDate: Date,
   db: Prisma.TransactionClient = prisma
 ): Promise<MenuValueSnapshot> => {
 
@@ -44,7 +45,8 @@ const buildMenuSnapshot = async (
   const shares =
     await getPriceSharesForMenuItem(
       menuItemId,
-      db
+      db,
+      targetDate
     );
 
 
@@ -108,7 +110,8 @@ export const createCorrectionRequest = async (
 
               transaction: {
                 select: {
-                  id: true
+                  id: true,
+                  transactionDate: true
                 }
               }
 
@@ -144,6 +147,7 @@ export const createCorrectionRequest = async (
         oldValue =
           await buildMenuSnapshot(
             transactionItem.menu_item_id,
+            transactionItem.transaction.transactionDate,
             tx
           );
 
@@ -151,6 +155,7 @@ export const createCorrectionRequest = async (
         newValue =
           await buildMenuSnapshot(
             input.newMenuItemId,
+            transactionItem.transaction.transactionDate,
             tx
           );
 

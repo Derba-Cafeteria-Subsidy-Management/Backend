@@ -304,7 +304,7 @@ model Transaction {
 
   employeeId String
 
-  employee employees @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employee employees @relation(fields: [employeeId], references: [id], onDelete: Restrict)
 
   menu_session mealType
 

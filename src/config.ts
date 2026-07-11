@@ -7,8 +7,8 @@ export const config = {
   nodeEnv: process.env.NODE_ENV ?? 'development',
   port: Number(process.env.PORT ?? 3000),
   databaseUrl: process.env.DATABASE_URL ?? '',
-  ACCESS_SECRET: process.env.JWT_SECRET ?? process.env.JWT_ACCESS_SECRET ?? '',
-  REFRESH_SECRET: process.env.JWT_REFRESH_SECRET ?? '',
+  ACCESS_SECRET: process.env.JWT_SECRET ?? process.env.JWT_ACCESS_SECRET ?? (process.env.NODE_ENV === 'production' ? '' : 'dev-secret-key-must-be-changed-in-prod'),
+  REFRESH_SECRET: process.env.JWT_REFRESH_SECRET ?? (process.env.NODE_ENV === 'production' ? '' : 'dev-refresh-secret-key-must-be-changed-in-prod'),
 
   ACCESS_EXPIRES_IN:
     process.env.ACCESS_TOKEN_EXPIRES_IN || '15m',
@@ -35,6 +35,10 @@ export const config = {
   Bot_token: process.env.BOT_TOKEN || '',
 };
 
+
+if (config.isProduction && (!config.ACCESS_SECRET || !config.REFRESH_SECRET)) {
+  throw new Error('FATAL ERROR: JWT secrets (JWT_SECRET/JWT_ACCESS_SECRET/JWT_REFRESH_SECRET) must be set in production mode!');
+}
 
 if (!config.databaseUrl) {
   // eslint-disable-next-line no-console
