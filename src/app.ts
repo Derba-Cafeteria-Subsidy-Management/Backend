@@ -25,15 +25,21 @@ export const app = express();
 
 app.set('trust proxy', 1);
 
+            
 // app.use(cors({
 //   origin: (_origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
 //     callback(null, true);
 //   },
-//    credentials: true,
+//    credentials: true,'https://frontend-two-alpha-29.vercel.app',
 // }));
 
+
+
 app.use(cors({
-  origin: config.frontendUrl,
+  origin: [
+    'http://localhost:5173',
+    'https://frontend-two-alpha-29.vercel.app'
+  ],
   credentials: true,
 }));
 
