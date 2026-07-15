@@ -253,6 +253,11 @@ enum mealType {
   DINNER
 }
 
+enum SubsidyType {
+  NORMAL
+  SPECIAL
+}
+
 model employees {
   id              String         @id @default(uuid())
   Employee_number String         @unique
@@ -261,14 +266,17 @@ model employees {
   fingerprint_id  String?        @unique
   status          EmployeeStatus @default(ACTIVE)
   created_at      DateTime       @default(now())
+  subsidyType     SubsidyType    @default(NORMAL)
 
-  updated_at                DateTime                     @updatedAt
-  Transactions              Transaction[]
-  biometricMappings         BiometricMapping[]
-  employeeDailyMealStatuses employee_daily_meal_status[]
+  updated_at              DateTime                  @updatedAt
+  Transactions            Transaction[]
+  biometricMappings       BiometricMapping[]
+  employeeSessionStatuses employee_session_status[]
 
   @@index([status])
   @@index([full_name])
+  @@index([subsidyType, Employee_number])
+  @@index([subsidyType, full_name])
   @@map("employees")
 }
 
@@ -322,7 +330,7 @@ model Transaction {
 
   offline_sync_records offline_sync_records[]
 
-  @@unique([employeeId, menu_session, transactionDate], name: "unique_meal_per_day")
+  @@index([employeeId, menu_session, transactionDate])
   @@index([transactionDate])
   @@index([cashierId, transactionDate])
   @@index([employeeId, transactionDate])
@@ -330,23 +338,22 @@ model Transaction {
   @@map("transactions")
 }
 
-model employee_daily_meal_status {
-  id         String   @id @default(cuid())
+model employee_session_status {
+  id String @id @default(cuid())
+
   employeeId String
-  date       DateTime
 
-  breakfast Boolean @default(false)
-  lunch     Boolean @default(false)
-  dinner    Boolean @default(false)
+  date DateTime
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  session mealType
 
-  employee employees @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  mealConsumed Int @default(0)
 
-  @@unique([employeeId, date]) // 🔥 prevents duplicates per day
-  @@index([date])
-  @@index([employeeId, date])
+  drinkConsumed Int @default(0)
+
+  employee employees @relation(fields: [employeeId], references: [id])
+
+  @@unique([employeeId, date, session])
 }
 
 model correction_requests {
@@ -385,17 +392,23 @@ enum CorrectionRequestStatus {
 }
 
 model Subsidy_config {
-  id             String    @id @default(uuid())
+  id             String        @id @default(uuid())
   company_share  Float
   employee_share Float
+  policy SubsidyPolicy @default(DEFAULT)
   effective_from DateTime
   effective_to   DateTime?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 
   @@index([effective_from])
   @@index([effective_to])
   @@map("subsidy_config")
+}
+
+enum SubsidyPolicy {
+  DEFAULT
+  FULL_COMPANY
 }
 
 model offline_sync_records {

@@ -2,7 +2,7 @@ import { prisma } from "../../../libs/lib/prisma";
 import { getRequestContextFromRequest } from "../../auth/service/auth.service";
 import { getImportPreview, removeImportPreview } from "../../menu/helpers/import-cache";
 import { getSystemSettings } from "../../system-settings/helpers/system-settings.helper.ts/system-settings.helper";
-import { createEmployee, deleteEmployee, deactivateEmployee, fingerprintScan, getEmployees, previewEmployeeImport, updateEmployee, SearchEmployeeBy } from "../service/employee.service";
+import { createEmployee, deleteEmployee, deactivateEmployee, fingerprintScan, getEmployees, previewEmployeeImport, updateEmployee, SearchEmployeeBy, SearchSpecialEmployeeBy } from "../service/employee.service";
 import { invalidateEmployeeCache } from "../helpers/cache-invalidation.helper.js";
 
 import type { Request, Response, NextFunction } from 'express';
@@ -106,6 +106,29 @@ export const getEmployeeByNUmberController =
             data,
         });
     };
+
+export const searchSpecialEmployee = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { employeeNumber, name } = req.query;
+
+    const employee =
+      await SearchSpecialEmployeeBy(
+        employeeNumber as string | undefined,
+        name as string | undefined
+      );
+
+      res.status(200).json({
+            success: true,
+            employee,
+        });
+  } catch (error) {
+    next(error);
+  }
+};
 
 export const updateEmployeeController =
     async (req: Request, res: Response) => {

@@ -31,26 +31,77 @@ import { startOfDay } from "../../shared/helpers/date.helper.js";
     return mealsToday;
 }; */
 
-export const getMealsToday = async (employeeId: string) => {
-  const today = startOfDay(new Date());
+export const getMealsToday = async (
+  employeeId: string
+) => {
 
-  const status = await prisma.employee_daily_meal_status.findUnique({
-    where: {
-      employeeId_date: {
+
+  const today =
+    startOfDay(new Date());
+
+
+
+  const statuses =
+    await prisma.employee_session_status.findMany({
+
+      where: {
         employeeId,
         date: today,
       },
-    },
-    select: {
-      breakfast: true,
-      lunch: true,
-      dinner: true,
-    },
+
+      select: {
+        session: true,
+        mealConsumed: true,
+        drinkConsumed: true,
+      }
+
+    });
+
+
+
+  const sessions = [
+    "BREAKFAST",
+    "LUNCH",
+    "DINNER"
+  ] as const;
+
+
+
+  return sessions.map((session) => {
+
+
+    const status =
+      statuses.find(
+        item => item.session === session
+      );
+
+
+
+    return {
+
+      session,
+
+      mealConsumed:
+        status?.mealConsumed ?? 0,
+
+      drinkConsumed:
+        status?.drinkConsumed ?? 0,
+
+
+      mealAvailable:
+        (status?.mealConsumed ?? 0) < 1,
+
+
+      drinkAvailable:
+        (status?.drinkConsumed ?? 0) < 1,
+
+
+      completed:
+        (status?.mealConsumed ?? 0) >= 1 &&
+        (status?.drinkConsumed ?? 0) >= 1,
+
+    };
+
   });
 
-  return status ?? {
-    breakfast: false,
-    lunch: false,
-    dinner: false,
-  };
 };

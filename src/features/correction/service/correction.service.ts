@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client';
+import { Prisma, SubsidyPolicy, SubsidyType } from '@prisma/client';
 import { prisma } from '../../../libs/lib/prisma.js';
 import {
   ConflictError,
@@ -35,7 +35,9 @@ import { getMenuById } from '../../menu/service/menu.service.js';
 const buildMenuSnapshot = async (
   menuItemId: string,
   targetDate: Date,
+  policy: SubsidyPolicy,
   db: Prisma.TransactionClient = prisma
+
 ): Promise<MenuValueSnapshot> => {
 
 
@@ -46,6 +48,7 @@ const buildMenuSnapshot = async (
     await getPriceSharesForMenuItem(
       menuItemId,
       db,
+      policy,
       targetDate
     );
 
@@ -95,6 +98,8 @@ export const createCorrectionRequest = async (
       await prisma.$transaction(async (tx) => {
 
 
+
+
         const transactionItem =
           await tx.transactionItem.findUnique({
 
@@ -111,12 +116,17 @@ export const createCorrectionRequest = async (
               transaction: {
                 select: {
                   id: true,
-                  transactionDate: true
+                  transactionDate: true,
+                  employee: {
+                    select: {
+                      subsidyType: true,
+                    }
+                  }
                 }
+
               }
 
             }
-
           });
 
 
@@ -144,10 +154,17 @@ export const createCorrectionRequest = async (
 
 
 
+        // Derive subsidy policy from employee's subsidy type
+        const pol: SubsidyPolicy =
+          transactionItem.transaction.employee.subsidyType === SubsidyType.SPECIAL
+            ? SubsidyPolicy.FULL_COMPANY
+            : SubsidyPolicy.DEFAULT;
+
         oldValue =
           await buildMenuSnapshot(
             transactionItem.menu_item_id,
             transactionItem.transaction.transactionDate,
+            pol,
             tx
           );
 
@@ -156,6 +173,7 @@ export const createCorrectionRequest = async (
           await buildMenuSnapshot(
             input.newMenuItemId,
             transactionItem.transaction.transactionDate,
+            pol,
             tx
           );
 
@@ -454,7 +472,7 @@ export const getCorrectionRequests = async (
         employee:
           item.transactionItem.transaction.employee.full_name,
 
-        employeeNumber:item.transactionItem.transaction.employee.Employee_number,
+        employeeNumber: item.transactionItem.transaction.employee.Employee_number,
 
 
         menuItem:
@@ -528,7 +546,23 @@ export const approveCorrection = async (
 
             transactionItemId: true,
 
-            new_values: true
+            new_values: true,
+
+            old_values: true,
+
+            transactionItem: {
+              select: {
+                menu_item_id: true,
+                quantity: true,
+                transaction: {
+                  select: {
+                    employeeId: true,
+                    menu_session: true,
+                    transactionDate: true,
+                  }
+                }
+              }
+            }
 
           }
 
@@ -618,6 +652,79 @@ export const approveCorrection = async (
         });
 
 
+
+      // ── Session-status adjustment when food type changes ──────────────
+      // Retrieve the new menu item's food type from the new_values snapshot
+      const oldMenuItemId = correction.transactionItem.menu_item_id;
+      const itemQuantity = correction.transactionItem.quantity ?? 1;
+      const txEmployeeId = correction.transactionItem.transaction.employeeId;
+      const txSession = correction.transactionItem.transaction.menu_session;
+      const txDate = correction.transactionItem.transaction.transactionDate;
+
+      // Fetch old and new menu items food types
+      const [oldMenuItem, newMenuItem] = await Promise.all([
+        tx.menu_items.findUnique({
+          where: { id: oldMenuItemId },
+          select: { mealtype: true },
+        }),
+        tx.menu_items.findUnique({
+          where: { id: newValues.menuItemId },
+          select: { mealtype: true },
+        }),
+      ]);
+
+      if (oldMenuItem && newMenuItem) {
+        const oldIsDrink = oldMenuItem.mealtype === 'DRINK';
+        const newIsDrink = newMenuItem.mealtype === 'DRINK';
+
+        // Only adjust when the food type actually changes
+        if (oldIsDrink !== newIsDrink) {
+          const sessionStatus = await tx.employee_session_status.findUnique({
+            where: {
+              employeeId_date_session: {
+                employeeId: txEmployeeId,
+                date: txDate,
+                session: txSession,
+              }
+            }
+          });
+
+          if (sessionStatus) {
+            if (!oldIsDrink && newIsDrink) {
+              // Meal → Drink: decrement meal, increment drink
+              await tx.employee_session_status.update({
+                where: {
+                  employeeId_date_session: {
+                    employeeId: txEmployeeId,
+                    date: txDate,
+                    session: txSession,
+                  }
+                },
+                data: {
+                  mealConsumed: { decrement: Math.min(itemQuantity, sessionStatus.mealConsumed) },
+                  drinkConsumed: { increment: itemQuantity },
+                }
+              });
+            } else if (oldIsDrink && !newIsDrink) {
+              // Drink → Meal: decrement drink, increment meal
+              await tx.employee_session_status.update({
+                where: {
+                  employeeId_date_session: {
+                    employeeId: txEmployeeId,
+                    date: txDate,
+                    session: txSession,
+                  }
+                },
+                data: {
+                  drinkConsumed: { decrement: Math.min(itemQuantity, sessionStatus.drinkConsumed) },
+                  mealConsumed: { increment: itemQuantity },
+                }
+              });
+            }
+          }
+        }
+      }
+      // ─────────────────────────────────────────────────────────────────
 
       return {
 

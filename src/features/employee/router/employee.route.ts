@@ -3,7 +3,7 @@ import { Router } from 'express';
 import { seedSuperAdmin } from '../../../scripts/seed-super-admin.js';
 import { authenticate } from '../../auth/middleware/authenticate.middleware.js';
 import { authorize } from '../../auth/middleware/authorize.middleware.js';
-import { confirmEmployeeImportController, createEmployeeController, deactivateEmployeeController, deleteEmployeeController, fingerprintScanController, getEmployeeByNUmberController, getEmployeesController, importEmployeePreviewController, updateEmployeeController } from '../controller/employee.controller.js';
+import { confirmEmployeeImportController, createEmployeeController, deactivateEmployeeController, deleteEmployeeController, fingerprintScanController, getEmployeeByNUmberController, getEmployeesController, importEmployeePreviewController, searchSpecialEmployee, updateEmployeeController } from '../controller/employee.controller.js';
 import { uploadExcel } from '../../shared/helpers/upload.middleware.js';
 
 export const employeeRouter = Router();
@@ -83,6 +83,7 @@ employeeRouter.get(
  *               - fullName
  *               - department
  *               - fingerprintId
+ *               - subsidyType
  *             properties:
  *               employeeNumber:
  *                 type: string
@@ -99,6 +100,10 @@ employeeRouter.get(
  *               photo:
  *                 type: string
  *                 example: https://example.com/photo.jpg
+ *               subsidyType:
+ *                 type: string
+ *                 enum: [NORMAL,SPECIAL]
+ *                 example: NORMAL
  *     responses:
  *       201:
  *         description: Employee created successfully.
@@ -117,6 +122,103 @@ employeeRouter.post(
     authorize('ADMIN', 'SUPER_ADMIN'),
     //   validate(acceptInvitationSchema),
     createEmployeeController
+);
+
+/**
+ * @openapi
+ * api/employees/special/search:
+ *   get:
+ *     summary: Search a special (100% company subsidized) employee
+ *     tags:
+ *       - Employees
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: employeeNumber
+ *         schema:
+ *           type: string
+ *         description: Employee number
+ *
+ *       - in: query
+ *         name: name
+ *         schema:
+ *           type: string
+ *         description: Employee full name (partial match)
+ *
+ *     responses:
+ *       200:
+ *         description: Special employee found successfully.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *
+ *                 message:
+ *                   type: string
+ *                   example: Special employee retrieved successfully.
+ *
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                     employeeNumber:
+ *                       type: string
+ *                     fullName:
+ *                       type: string
+ *                     status:
+ *                       type: string
+ *                     subsidyType:
+ *                       type: string
+ *                       example: FULL_COMPANY
+ *                     photo:
+ *                       type: string
+ *                       nullable: true
+ *                     createdAt:
+ *                       type: string
+ *                       format: date-time
+ *
+ *                     mealsToday:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           session:
+ *                             type: string
+ *                           mealConsumed:
+ *                             type: integer
+ *                           drinkConsumed:
+ *                             type: integer
+ *                           mealAvailable:
+ *                             type: boolean
+ *                           drinkAvailable:
+ *                             type: boolean
+ *                           completed:
+ *                             type: boolean
+ *
+ *       400:
+ *         description: Employee number or name is required.
+ *
+ *       404:
+ *         description: Special employee not found.
+ *
+ *       401:
+ *         description: Unauthorized.
+ *
+ *       403:
+ *         description: Forbidden.
+ */
+
+employeeRouter.get(
+  "/special/search",
+  authenticate,
+  authorize("ADMIN", "SUPER_ADMIN", 'CASHIER'),
+  searchSpecialEmployee
 );
 
 /**

@@ -7,9 +7,9 @@ import { buildEmployeeKey, buildEmployeeListKey } from "../helpers/employee-cach
 import { invalidateEmployeeCache } from "../helpers/cache-invalidation.helper.js";
 import { CreateEmployeeContext, ImportEmployeeError, ImportEmployeeRow } from "../types/employee.types.js";
 import XLSX from "xlsx";
-import { ConflictError, NotFoundError } from "../../../errors/errors/apperror.js";
+import { ConflictError, NotFoundError, ValidationError } from "../../../errors/errors/apperror.js";
 import { getAuthenticationSettings } from "../../system-settings/service/system-settings.service.js";
-import { Prisma } from "@prisma/client";
+import { Prisma, SubsidyType } from "@prisma/client";
 
 const EMPLOYEE_DETAIL_CACHE_TTL = 600;
 
@@ -100,6 +100,96 @@ export const getEmployees = async (
 
     return response;
 };
+
+
+
+
+export const SearchSpecialEmployeeBy = async (
+    employeeNumber?: string,
+    name?: string
+) => {
+    if (!employeeNumber && !name) {
+        throw new ValidationError(
+            "Employee number or employee name is required."
+        );
+    }
+
+    const cacheKey = `special-employee:${employeeNumber ?? ""}:${name ?? ""}`;
+
+    const cached = await cacheGet<{
+        id: string;
+        employeeNumber: string;
+        fullName: string;
+        status: string;
+        subsidyType: SubsidyType;
+        photo: string | null;
+        createdAt: Date;
+    }>(cacheKey);
+
+    let employee;
+
+    if (cached) {
+        employee = cached;
+    } else {
+        const dbEmployee = await prisma.employees.findFirst({
+            where: {
+                subsidyType: SubsidyType.SPECIAL,
+
+                ...(employeeNumber && {
+                    Employee_number: employeeNumber,
+                }),
+
+                ...(name && {
+                    full_name: {
+                        contains: name,
+                        mode: "insensitive",
+                    },
+                }),
+            },
+
+            select: {
+                id: true,
+                Employee_number: true,
+                full_name: true,
+                status: true,
+                subsidyType: true,
+                photo: true,
+                created_at: true,
+            },
+        });
+
+        if (!dbEmployee) {
+            throw new NotFoundError(
+                "Special employee not found."
+            );
+        }
+
+        employee = {
+            id: dbEmployee.id,
+            employeeNumber: dbEmployee.Employee_number,
+            fullName: dbEmployee.full_name,
+            status: dbEmployee.status,
+            subsidyType: dbEmployee.subsidyType,
+            photo: dbEmployee.photo,
+            createdAt: dbEmployee.created_at,
+        };
+
+        await cacheSet(
+            cacheKey,
+            employee,
+            EMPLOYEE_DETAIL_CACHE_TTL
+        );
+    }
+
+    const mealsToday = await getMealsToday(employee.id);
+
+    return {
+        ...employee,
+        mealsToday,
+    };
+};
+
+
 
 export const SearchEmployeeBy = async (
     employeeNumber: string
@@ -193,6 +283,7 @@ export const createEmployee = async (
         fullName: string;
         fingerprintId?: string;
         photo?: string;
+        subsidyType?: SubsidyType;
 
     },
     context: CreateEmployeeContext
@@ -227,6 +318,8 @@ export const createEmployee = async (
                     body.fingerprintId ?? null,
                 photo:
                     body.photo ?? null,
+
+                subsidyType: body.subsidyType ?? SubsidyType.NORMAL
             },
         });
 
@@ -302,6 +395,7 @@ export const updateEmployee = async (
         photo?: string | null;
         status?: string;
         fingerprintId?: string | null;
+        subsidyType?: SubsidyType;
     },
     context: CreateEmployeeContext
 ) => {
@@ -339,6 +433,10 @@ export const updateEmployee = async (
                 ...(body.status && {
                     status:
                         body.status as any,
+                }),
+
+                ...(body.subsidyType && {
+                    subsidyType: body.subsidyType,
                 }),
             },
         });
