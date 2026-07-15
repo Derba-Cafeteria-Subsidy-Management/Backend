@@ -48,6 +48,7 @@ subsidyRouter.get(
  *               - employeePercent
  *               - companyPercent
  *               - effectiveFrom
+ *               - SubsidyPolicy
  *             properties:
  *               employeePercent:
  *                 type: integer
@@ -56,6 +57,9 @@ subsidyRouter.get(
  *               effectiveFrom:
  *                 type: string
  *                 format: date
+ *               SubsidyPolicy:
+ *                 type: string
+ *                 enum: [DEFAULT, FULL_COMPANY]  
  *     responses:
  *       201:
  *         description: Subsidy configuration created successfully.

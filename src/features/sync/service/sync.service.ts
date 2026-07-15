@@ -1,7 +1,7 @@
 import { ulid } from 'ulid';
 import { prisma } from '../../../libs/lib/prisma.js';
 import { createAuditLog } from '../../auth/service/audit.service.js';
-import { registerMealTransaction } from '../../Transaction/service/transaction.service.js';
+// import { registerMealTransaction } from '../../Transaction/service/transaction.service.js';
 import type {
   OfflineBatchContext,
   OfflineBatchInput,
@@ -12,7 +12,7 @@ export const processOfflineBatch = async (
   input: OfflineBatchInput,
   context: OfflineBatchContext
 ) => {
-  const results: OfflineSyncResult[] = [];
+ /*  const results: OfflineSyncResult[] = [];
 
   for (const item of input.transactions) {
     const existingSync = await prisma.offline_sync_records.findUnique({
@@ -118,10 +118,11 @@ export const processOfflineBatch = async (
     },
     ipAddress: context.ipAddress,
     userAgent: context.userAgent,
-  });
+  }); */
 
   return {
-    processed: results.length,
-    results,
+    /* processed: results.length,
+    results, */
+    
   };
 };

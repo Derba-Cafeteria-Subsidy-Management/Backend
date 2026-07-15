@@ -2,7 +2,7 @@ import { prisma } from '../../../libs/lib/prisma.js';
 import { NotFoundError, ValidationError } from '../../../errors/errors/apperror.js';
 import { startOfDay } from './date.helper.js';
 import { getSubsidyCache, setSubsidyCache } from '../cache/system.cache.js';
-import { Prisma, PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient, SubsidyPolicy } from '@prisma/client';
 import { buildCurrentPriceKey } from '../../menu/helpers/menu-cache.helper.js';
 import { cacheGet, cacheSet } from '../../../libs/lib/cache.js';
 
@@ -91,40 +91,76 @@ export const getMenuPriceAtDate = async (
   return priceRecord.price;
 };
 
+export const getActiveSubsidyConfig = async (
+  policy: SubsidyPolicy = "DEFAULT"
+) => {
 
-export const getActiveSubsidyConfig = async () => {
 
-  const cached = getSubsidyCache();
+  const cached =
+    getSubsidyCache(policy);
+
 
   if (cached) {
     return cached;
   }
 
-  const subsidy = await prisma.subsidy_config.findFirst({
 
-    where: {
-      effective_to: null,
-    },
 
-    orderBy: {
-      effective_from: "desc",
-    },
+  const subsidy =
+    await prisma.subsidy_config.findFirst({
 
-  });
+      where: {
+        policy,
+
+        effective_from: {
+          lte: new Date()
+        },
+
+        OR: [
+          {
+            effective_to: null
+          },
+          {
+            effective_to: {
+              gte: new Date()
+            }
+          }
+        ]
+
+      },
+
+      orderBy: {
+        effective_from: "desc"
+      }
+
+    });
+
+
 
   if (!subsidy) {
-    throw new NotFoundError("No active subsidy configuration found.");
+
+    throw new NotFoundError(
+      `No active subsidy configuration found for ${policy}`
+    );
+
   }
 
-  setSubsidyCache(subsidy);
+
+
+  setSubsidyCache(
+    policy,
+    subsidy
+  );
+
 
   return subsidy;
 
 };
 
-export const getSubsidyConfigAtDate = async (targetDate: Date) => {
+export const getSubsidyConfigAtDate = async (targetDate: Date, policy: SubsidyPolicy = "DEFAULT") => {
   const subsidy = await prisma.subsidy_config.findFirst({
     where: {
+      policy,
       effective_from: { lte: targetDate },
       OR: [
         { effective_to: null },
@@ -159,17 +195,51 @@ export const calculateShares = (
 export const getPriceSharesForMenuItem = async (
   menuItemId: string,
   db: PrismaExecutor,
-  targetDate?: Date
-): Promise<PriceShares> => {
-  const menuPrice = targetDate
-    ? await getMenuPriceAtDate(db, menuItemId, targetDate)
-    : await getActiveMenuPrice(db, menuItemId);
-  const subsidy = targetDate
-    ? await getSubsidyConfigAtDate(targetDate)
-    : await getActiveSubsidyConfig();
+  policy: SubsidyPolicy,
+  targetDate?: Date,
 
-  return calculateShares(menuPrice, subsidy.employee_share, subsidy.company_share);
+  // ="DEFAULT"
+): Promise<PriceShares> => {
+
+
+  const menuPrice =
+    targetDate
+      ?
+      await getMenuPriceAtDate(
+        db,
+        menuItemId,
+        targetDate
+      )
+      :
+      await getActiveMenuPrice(
+        db,
+        menuItemId
+      );
+
+
+
+  const subsidy =
+    targetDate
+      ?
+      await getSubsidyConfigAtDate(
+        targetDate,
+        policy
+      )
+      :
+      await getActiveSubsidyConfig(
+        policy
+      );
+
+
+
+  return calculateShares(
+    menuPrice,
+    subsidy.employee_share,
+    subsidy.company_share
+  );
+
 };
+
 
 export const getCashierDisplayName = (email: string): string => {
   return email.split('@')[0] ?? email;

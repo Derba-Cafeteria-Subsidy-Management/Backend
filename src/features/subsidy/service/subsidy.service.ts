@@ -62,13 +62,14 @@ export const createSubsidyConfig = async (
       data: {
         employee_share: input.employeePercent,
         company_share: input.companyPercent,
+        policy: input.SubsidyPolicy,
         effective_from: effectiveFrom,
         effective_to: null,
       },
     });
   });
 
-  setSubsidyCache(config);
+  setSubsidyCache(config.policy, config);
 
   await createAuditLog({
     userId: context.userId,

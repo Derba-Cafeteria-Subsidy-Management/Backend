@@ -35,26 +35,37 @@ export function clearSystemCache() {
     systemCache.delete("settings");
 }
 
-export function getSubsidyCache() {
-    const item = subsidyCache.get("current");
+/**
+ * Retrieve cached subsidy config for the given policy.
+ * Uses the policy string as the cache key so DEFAULT and FULL_COMPANY
+ * never collide with each other.
+ */
+export function getSubsidyCache(policy: string = "DEFAULT"): Subsidy_config | null {
+    const item = subsidyCache.get(policy);
 
     if (!item) return null;
 
     if (item.expires < Date.now()) {
-        subsidyCache.delete("current");
+        subsidyCache.delete(policy);
         return null;
     }
 
     return item.value;
 }
 
-export function setSubsidyCache(value: Subsidy_config) {
-    subsidyCache.set("current", {
+/**
+ * Store a subsidy config in the cache, keyed by its policy.
+ */
+export function setSubsidyCache(policy: string, value: Subsidy_config): void {
+    subsidyCache.set(policy, {
         value,
         expires: Date.now() + TTL,
     });
 }
 
-export function clearSubsidyCache() {
-    subsidyCache.delete("current");
+/**
+ * Clear all cached subsidy configs (all policies).
+ */
+export function clearSubsidyCache(): void {
+    subsidyCache.clear();
 }

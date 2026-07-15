@@ -1,5 +1,5 @@
-import { Prisma } from '@prisma/client';
-import type { PrismaClient, mealType } from '@prisma/client';
+import { Prisma, SubsidyPolicy, SubsidyType } from '@prisma/client';
+import type { $Enums, FoodType, PrismaClient, mealType } from '@prisma/client';
 import { ulid } from 'ulid';
 import { prisma } from '../../../libs/lib/prisma.js';
 import {
@@ -27,6 +27,15 @@ import type {
   TransactionListItem,
   TransactionListQuery,
 } from '../types/transaction.type.js';
+import {
+  calculateConsumption,
+  validateSessionAvailability,
+  updateEmployeeSessionStatus,
+} from './consumption.service.js';
+
+
+
+
 
 type PricingDb = PrismaClient | Prisma.TransactionClient;
 
@@ -49,6 +58,7 @@ interface PreparedTransactionItem {
   menuPrice: number;
   employeeShare: number;
   companyShare: number;
+  mealType: FoodType;
 }
 
 interface CorrectionRequestDb {
@@ -122,34 +132,47 @@ const normalizeTransactionItems = (
     }));
   }
 
- /*  if (input.menuItemId) {
-    return [
-      {
-        menuItemId: input.menuItemId,
-        quantity: 1,
-      },
-    ];
-  } */
+  /*  if (input.menuItemId) {
+     return [
+       {
+         menuItemId: input.menuItemId,
+         quantity: 1,
+       },
+     ];
+   } */
 
   throw new ValidationError('At least one menu item is required');
 };
 
 const prepareTransactionItems = async (
   input: CreateTransactionInput,
-  db: PricingDb
+  db: PricingDb,
+  policy: SubsidyPolicy
 ): Promise<PreparedTransactionItem[]> => {
   const normalizedItems = normalizeTransactionItems(input);
 
   return Promise.all(
     normalizedItems.map(async (item) => {
-      const shares = await getPriceSharesForMenuItem(item.menuItemId, db);
+      const [shares, menuItem] = await Promise.all([
+        getPriceSharesForMenuItem(item.menuItemId, db , policy),
+
+        db.menu_items.findUniqueOrThrow({
+          where: {
+            id: item.menuItemId,
+          },
+          select: {
+            mealtype: true,
+          },
+        }),
+      ]);
 
       return {
         menuItemId: item.menuItemId,
         quantity: item.quantity,
         menuPrice: shares.menuPrice,
-        employeeShare: shares.companyShare,
-        companyShare: shares.employeeShare,
+        employeeShare: shares.employeeShare,
+        companyShare: shares.companyShare,
+        mealType: menuItem.mealtype,
       };
     })
   );
@@ -249,9 +272,10 @@ const createTransactionWithItems = async (
   employeeId: string,
   cashierId: string,
   transactionDate: Date,
-  createdAt?: Date
-) : Promise<TransactionWithRelations> => {
-  const preparedItems = await prepareTransactionItems(input, db);
+  preparedItems: PreparedTransactionItem[],
+  createdAt?: Date,
+): Promise<TransactionWithRelations> => {
+  // const preparedItems = await prepareTransactionItems(input, db);
 
   return db.transaction.create({
     data: {
@@ -308,31 +332,58 @@ export const createTransaction = async (
       if (employee.status !== 'ACTIVE') {
         throw new ValidationError('Employee is not active');
       }
+        
+
+      
+      const policy: SubsidyPolicy =  employee.subsidyType === SubsidyType.SPECIAL
+                  ? SubsidyPolicy.FULL_COMPANY
+                  : SubsidyPolicy.DEFAULT;
+
+      const preparedItems =
+        await prepareTransactionItems(
+          input,
+          tx,
+          policy
+        );
+
+
+
+
+      const consumption =
+        calculateConsumption(
+          preparedItems.map(item => ({
+            menu_item: { foodType: item.mealType },
+            quantity: item.quantity
+          }))
+        );
+
+      await validateSessionAvailability(
+        tx,
+        input.employeeId,
+        input.mealSession,
+        consumption.meal,
+        consumption.drink,
+        transactionDate
+      );
 
       const transaction = await createTransactionWithItems(
         tx,
         input,
         input.employeeId,
         context.cashierId,
-        transactionDate
+        transactionDate,
+        preparedItems
       );
 
-      const mealUpdate = buildMealStatusUpdate(input.mealSession);
+      await updateEmployeeSessionStatus(
+        tx,
+        input.employeeId,
+        input.mealSession,
+        transactionDate,
+        consumption.meal,
+        consumption.drink
+      );
 
-      await tx.employee_daily_meal_status.upsert({
-        where: {
-          employeeId_date: {
-            employeeId: input.employeeId,
-            date: transactionDate,
-          },
-        },
-        update: mealUpdate,
-        create: {
-          employeeId: input.employeeId,
-          date: transactionDate,
-          ...mealUpdate,
-        },
-      });
 
       return transaction;
     });
@@ -495,77 +546,79 @@ export const getTransactionById = async (
   return mapTransactionResponse(transaction);
 };
 
-export const registerMealTransaction = async (
-  input: CreateTransactionInput,
-  cashierId: string,
-  transactionDate: Date,
-  createdAt?: Date,
-  auditContext?: RequestContext
-) => {
-  const employee = await ensureActiveEmployee(input.employeeId);
-  const normalizedDate = startOfDay(transactionDate);
 
-  const existing = await prisma.transaction.findUnique({
-    where: {
-      unique_meal_per_day: {
-        employeeId: input.employeeId,
-        menu_session: input.mealSession,
-        transactionDate: normalizedDate,
-      },
-    },
-  });
 
-  if (existing) {
-    return {
-      status: 'DUPLICATE_SKIPPED' as const,
-      reason: 'Meal already registered',
-      transactionId: existing.id,
-    };
-  }
+// export const registerMealTransaction = async (
+//   input: CreateTransactionInput,
+//   cashierId: string,
+//   transactionDate: Date,
+//   createdAt?: Date,
+//   auditContext?: RequestContext
+// ) => {
+//   const employee = await ensureActiveEmployee(input.employeeId);
+//   const normalizedDate = startOfDay(transactionDate);
 
-  const preparedItems = await prepareTransactionItems(input, prisma);
+//   const existing = await prisma.transaction.findUnique({
+//     where: {
+       
+//         employeeId: input.employeeId,
+//         menu_session: input.mealSession,
+//         transactionDate: normalizedDate,
+//       }
+//     },
+//   });
 
-  const transaction = await prisma.transaction.create({
-    data: {
-      id: ulid(),
-      employeeId: input.employeeId,
-      menu_session: input.mealSession,
-      transactionDate: normalizedDate,
-      cashierId,
-      ...(createdAt && { createdAt }),
-      items: {
-        create: preparedItems.map((item) => ({
-          id: ulid(),
-          menu_item_id: item.menuItemId,
-          menu_price: item.menuPrice,
-          employee_share: item.employeeShare,
-          company_share: item.companyShare,
-          quantity: item.quantity,
-        })),
-      },
-    },
-  });
+//   if (existing) {
+//     return {
+//       status: 'DUPLICATE_SKIPPED' as const,
+//       reason: 'Meal already registered',
+//       transactionId: existing.id,
+//     };
+//   }
 
-  if (auditContext) {
-    await createAuditLog({
-      userId: cashierId,
-      action: 'create_transaction',
-      entityType: 'Transaction',
-      entityId: transaction.id,
-      metadata: {
-        employeeId: input.employeeId,
-        mealSession: input.mealSession,
-        items: preparedItems,
-        source: 'offline_sync',
-      },
-      ipAddress: auditContext.ipAddress,
-      userAgent: auditContext.userAgent,
-    });
-  }
+//   const preparedItems = await prepareTransactionItems(input, prisma);
 
-  return {
-    status: 'SAVED' as const,
-    transactionId: transaction.id,
-    employee,
-  };
-};
+//   const transaction = await prisma.transaction.create({
+//     data: {
+//       id: ulid(),
+//       employeeId: input.employeeId,
+//       menu_session: input.mealSession,
+//       transactionDate: normalizedDate,
+//       cashierId,
+//       ...(createdAt && { createdAt }),
+//       items: {
+//         create: preparedItems.map((item) => ({
+//           id: ulid(),
+//           menu_item_id: item.menuItemId,
+//           menu_price: item.menuPrice,
+//           employee_share: item.employeeShare,
+//           company_share: item.companyShare,
+//           quantity: item.quantity,
+//         })),
+//       },
+//     },
+//   });
+
+//   if (auditContext) {
+//     await createAuditLog({
+//       userId: cashierId,
+//       action: 'create_transaction',
+//       entityType: 'Transaction',
+//       entityId: transaction.id,
+//       metadata: {
+//         employeeId: input.employeeId,
+//         mealSession: input.mealSession,
+//         items: preparedItems,
+//         source: 'offline_sync',
+//       },
+//       ipAddress: auditContext.ipAddress,
+//       userAgent: auditContext.userAgent,
+//     });
+//   }
+
+//   return {
+//     status: 'SAVED' as const,
+//     transactionId: transaction.id,
+//     employee,
+//   };
+// };
