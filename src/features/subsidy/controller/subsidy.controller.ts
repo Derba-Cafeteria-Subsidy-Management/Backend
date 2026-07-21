@@ -1,15 +1,35 @@
 import type { Request, Response, NextFunction } from 'express';
 import { getRequestContextFromRequest } from '../../auth/service/auth.service.js';
 import { createSubsidyConfig, getCurrentSubsidy } from '../service/subsidy.service.js';
+import { SubsidyPolicy } from '@prisma/client';
+
+
 
 export const getSubsidyHandler = async (
-  _req: Request,
+  req: Request,
   res: Response,
   next: NextFunction
 ): Promise<void> => {
   try {
-    const data = await getCurrentSubsidy();
-    res.status(200).json({ success: true, data });
+    const { policy } = req.query;
+
+    if (
+      typeof policy !== 'string' ||
+      !Object.values(SubsidyPolicy).includes(policy as SubsidyPolicy)
+    ) {
+      res.status(400).json({
+        success: false,
+        message: `Invalid policy. Allowed values: ${Object.values(SubsidyPolicy).join(', ')}`
+      });
+      return;
+    }
+
+    const data = await getCurrentSubsidy(policy as SubsidyPolicy);
+
+    res.status(200).json({
+      success: true,
+      data,
+    });
   } catch (error) {
     next(error);
   }

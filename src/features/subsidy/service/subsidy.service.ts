@@ -9,6 +9,7 @@ import type {
   SubsidyContext,
 } from '../types/subsidy.types.js';
 import { setSubsidyCache } from '../../shared/cache/system.cache.js';
+import { SubsidyPolicy } from '@prisma/client';
 
 const mapSubsidyResponse = (config: {
   id: string;
@@ -24,8 +25,11 @@ const mapSubsidyResponse = (config: {
   effectiveTo: config.effective_to ? toDateOnlyString(config.effective_to) : null,
 });
 
-export const getCurrentSubsidy = async (): Promise<ActiveSubsidyResponse> => {
-  const config = await getActiveSubsidyConfig();
+export const getCurrentSubsidy = async (
+  policy : SubsidyPolicy
+): Promise<ActiveSubsidyResponse> => {
+
+  const config = await getActiveSubsidyConfig(policy);
   return mapSubsidyResponse(config);
 };
 
@@ -44,6 +48,7 @@ export const createSubsidyConfig = async (
     const currentConfig = await tx.subsidy_config.findFirst({
       where: {
         effective_to: null,
+        policy: input.SubsidyPolicy,
       },
       orderBy: { effective_from: 'desc' },
     });

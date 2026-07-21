@@ -7,19 +7,32 @@ import { createSubsidySchema } from '../validation/subsidy.validation.js';
 
 export const subsidyRouter = Router();
 
+
 /**
  * @openapi
  * /api/subsidy:
  *   get:
  *     summary: Get active subsidy configuration
- *     description: Returns the currently active employee/company subsidy configuration.
+ *     description: Returns the currently active subsidy configuration for the specified policy.
  *     tags:
  *       - Subsidy
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: policy
+ *         required: true
+ *         schema:
+ *           type: string
+ *           enum:
+ *             - DEFAULT
+ *             - FULL_COMPANY
+ *         description: Subsidy policy to retrieve.
  *     responses:
  *       200:
  *         description: Active subsidy configuration retrieved successfully.
+ *       400:
+ *         description: Invalid subsidy policy.
  */
 subsidyRouter.get(
   '/',
