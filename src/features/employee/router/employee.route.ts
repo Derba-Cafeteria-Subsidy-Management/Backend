@@ -20,6 +20,14 @@ export const employeeRouter = Router();
  *       - bearerAuth: []
  *     parameters:
  *       - in: query
+ *         name: subsidytype
+ *         required: true
+ *         schema:
+ *           type: string
+ *           enum:
+ *             - NORMAL
+ *             - SPECIAL          
+ *       - in: query
  *         name: employeeNumber
  *         schema:
  *           type: string

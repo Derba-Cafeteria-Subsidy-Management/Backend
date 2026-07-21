@@ -14,13 +14,12 @@ import { Prisma, SubsidyType } from "@prisma/client";
 const EMPLOYEE_DETAIL_CACHE_TTL = 600;
 
 export const getEmployees = async (
+    subsidytype: SubsidyType = SubsidyType.NORMAL,
     employeeNumber?: string,
     name?: string,
     status?: string,
     page = 1,
     limit = 20
-
-
 ) => {
     const cacheKey = await buildEmployeeListKey(
         employeeNumber,
@@ -55,6 +54,11 @@ export const getEmployees = async (
         ...(status && {
             status: status as any,
         }),
+
+        ...(subsidytype && {
+            subsidyType: subsidytype as any
+        })
+
     };
 
     const employees =

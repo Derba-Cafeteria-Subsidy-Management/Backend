@@ -8,9 +8,12 @@ import { invalidateEmployeeCache } from "../helpers/cache-invalidation.helper.js
 import type { Request, Response, NextFunction } from 'express';
 import { randomUUID } from "node:crypto";
 import { ImportEmployeeRow } from "../types/employee.types";
+import { SubsidyType } from "@prisma/client";
 
 export const getEmployeesController =
     async (req: Request, res: Response) => {
+
+        const subsidytype = req.query.subsidytype as SubsidyType;
 
         const employeeNumber =
             req.query.employeeNumber as string;
@@ -43,7 +46,20 @@ export const getEmployeesController =
             });
         }
 
+
+        if (
+            typeof subsidytype !== 'string' ||
+            !Object.values(SubsidyType).includes(subsidytype as SubsidyType)
+        ) {
+            res.status(400).json({
+                success: false,
+                message: `Invalid policy. Allowed values: ${Object.values(SubsidyType).join(', ')}`
+            });
+            return;
+        }
+
         const data = await getEmployees(
+            subsidytype,
             employeeNumber,
             name,
             status,
@@ -81,7 +97,7 @@ export const getEmployeeByNUmberController =
     async (req: Request, res: Response) => {
 
 
-        if (!req.params.employee_Number|| Array.isArray(req.params.employee_Number)) {
+        if (!req.params.employee_Number || Array.isArray(req.params.employee_Number)) {
             return res.status(400).json({
                 success: false,
                 message: 'Employee Number is required'
@@ -108,26 +124,26 @@ export const getEmployeeByNUmberController =
     };
 
 export const searchSpecialEmployee = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
+    req: Request,
+    res: Response,
+    next: NextFunction
 ) => {
-  try {
-    const { employeeNumber, name } = req.query;
+    try {
+        const { employeeNumber, name } = req.query;
 
-    const employee =
-      await SearchSpecialEmployeeBy(
-        employeeNumber as string | undefined,
-        name as string | undefined
-      );
+        const employee =
+            await SearchSpecialEmployeeBy(
+                employeeNumber as string | undefined,
+                name as string | undefined
+            );
 
-      res.status(200).json({
+        res.status(200).json({
             success: true,
             employee,
         });
-  } catch (error) {
-    next(error);
-  }
+    } catch (error) {
+        next(error);
+    }
 };
 
 export const updateEmployeeController =
