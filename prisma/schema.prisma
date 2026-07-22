@@ -51,6 +51,14 @@ enum AuditAction {
   create_subsidy_config
   offline_sync_batch
   SYSTEM_SETTINGS_UPDATED
+  EMPLOYEE_GROUP_CREATED
+  EMPLOYEE_GROUP_UPDATED
+  EMPLOYEE_GROUP_STATUS_CHANGED
+  GROUP_MEMBER_ASSIGNED
+  GROUP_MEMBER_REMOVED
+  GROUP_MEMBER_MOVED
+  SHIFT_SLOT_OVERRIDDEN
+  EMPLOYEE_TYPE_CHANGED
 }
 
 enum FoodType {
@@ -85,6 +93,7 @@ model User {
   offlineSyncRecords         offline_sync_records[]
   priceHistoryCreatedBy      price_history[]        @relation("PriceHistoryCreatedBy")
   systemSettings             system_settings[]
+  guestMealTransactions      GuestMealTransaction[]
 
   @@index([role, status])
   @@map("users")
@@ -138,10 +147,13 @@ model menu_items {
 
   mealtype FoodType
 
-  createdAt    DateTime          @default(now())
-  updatedAt    DateTime          @updatedAt
-  PriceHistory price_history[]
-  transactions TransactionItem[]
+  audience MenuAudience @default(EMPLOYEE)
+
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  PriceHistory   price_history[]
+  transactions   TransactionItem[]
+  guestMealItems GuestMealItem[]
 
   @@index([status])
   @@map("menu_items")
@@ -258,6 +270,11 @@ enum SubsidyType {
   SPECIAL
 }
 
+enum MenuAudience {
+  EMPLOYEE
+  GUEST
+}
+
 model employees {
   id              String         @id @default(uuid())
   Employee_number String         @unique
@@ -267,17 +284,71 @@ model employees {
   status          EmployeeStatus @default(ACTIVE)
   created_at      DateTime       @default(now())
   subsidyType     SubsidyType    @default(NORMAL)
+  employeeType    EmployeeType   @default(NORMAL)
 
   updated_at              DateTime                  @updatedAt
   Transactions            Transaction[]
   biometricMappings       BiometricMapping[]
   employeeSessionStatuses employee_session_status[]
+  guestMealTransactions   GuestMealTransaction[]
+  groupMembers            EmployeeGroupMember[]
 
   @@index([status])
   @@index([full_name])
   @@index([subsidyType, Employee_number])
   @@index([subsidyType, full_name])
   @@map("employees")
+}
+
+model GuestMealItem {
+  id String @id @default(uuid())
+
+  guestTransactionId String
+
+  guestTransaction GuestMealTransaction @relation(fields: [guestTransactionId], references: [id], onDelete: Cascade)
+
+  menu_item_id String
+
+  menu_item menu_items @relation(fields: [menu_item_id], references: [id], onDelete: Restrict)
+
+  quantity Int @default(1)
+
+  price Float
+
+  company_share Float
+
+  createdAt DateTime @default(now())
+
+  @@index([guestTransactionId])
+  @@map("guest_meal_items")
+}
+
+model GuestMealTransaction {
+  id String @id @default(uuid())
+
+  invitedByEmployeeId String
+
+  invitedBy employees @relation(fields: [invitedByEmployeeId], references: [id], onDelete: Restrict)
+
+  reason String
+
+  menu_session mealType
+
+  transactionDate DateTime @db.Date
+
+  cashierId String
+
+  cashier User @relation(fields: [cashierId], references: [id], onDelete: Restrict)
+
+  items GuestMealItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([transactionDate])
+  @@index([invitedByEmployeeId])
+  @@index([cashierId])
+  @@map("guest_meal_transactions")
 }
 
 model TransactionItem {
@@ -395,7 +466,7 @@ model Subsidy_config {
   id             String        @id @default(uuid())
   company_share  Float
   employee_share Float
-  policy SubsidyPolicy @default(DEFAULT)
+  policy         SubsidyPolicy @default(DEFAULT)
   effective_from DateTime
   effective_to   DateTime?
   createdAt      DateTime      @default(now())
@@ -463,3 +534,67 @@ model AuditLog {
   @@index([entityType, entityId])
   @@map("audit_logs")
 }
+
+enum EmployeeType {
+  NORMAL
+  SHIFT
+}
+
+enum GroupStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum SlotHalf {
+  FIRST_HALF
+  SECOND_HALF
+}
+
+model EmployeeGroup {
+  id            String      @id @default(uuid())
+  name          String      @unique
+  description   String?
+  rotationOrder Int
+  status        GroupStatus @default(ACTIVE)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  members EmployeeGroupMember[]
+  slots   ShiftSlot[]
+
+  @@index([status, rotationOrder])
+  @@map("employee_groups")
+}
+
+model EmployeeGroupMember {
+  id         String    @id @default(uuid())
+  employeeId String
+  groupId    String
+  joinedAt   DateTime  @default(now())
+  leftAt     DateTime?
+  active     Boolean   @default(true)
+
+  employee employees     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  group    EmployeeGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, active])
+  @@index([groupId, active])
+  @@index([employeeId])
+  @@map("employee_group_members")
+}
+
+model ShiftSlot {
+  id         String        @id @default(uuid())
+  date       DateTime      @db.Date
+  half       SlotHalf
+  groupId    String
+  group      EmployeeGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  isOverride Boolean       @default(false)
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  @@unique([date, half])
+  @@index([date])
+  @@map("shift_slots")
+}
+

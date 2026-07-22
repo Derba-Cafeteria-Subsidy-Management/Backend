@@ -20,7 +20,7 @@ import { createAuditLog } from '../../auth/service/audit.service.js';
 import { buildMenuKey, buildMenuListKey, buildPriceHistoryKey } from '../helpers/menu-cache.helper.js';
 import { cacheGet, cacheSet } from '../../../libs/lib/cache.js';
 import { invalidateMenuCache } from '../helpers/cache-Invalidation.helper.js';
-import { FoodType, mealType, Prisma } from "@prisma/client";
+import { FoodType, mealType, Prisma, MenuAudience, MenuItemStatus } from "@prisma/client";
 import { NotFoundError } from '../../../errors/errors/apperror.js';
 
 
@@ -78,14 +78,20 @@ export const getMenus = async (
   activeOnly = true,
   page = 1,
   pageSize = 10,
-  query?: string
+  query?: string,
+  audience?: MenuAudience,
+  status?: MenuItemStatus,
+  mealtype?: FoodType
 ) => {
 
   const cacheKey = await buildMenuListKey(
     activeOnly,
     page,
     pageSize,
-    query
+    query,
+    audience,
+    status,
+    mealtype
   );
 
   const cached = await cacheGet<any>(cacheKey);
@@ -94,8 +100,18 @@ export const getMenus = async (
 
   const where: Prisma.menu_itemsWhereInput = {};
 
-  if (activeOnly) {
+  if (status) {
+    where.status = status;
+  } else if (activeOnly) {
     where.status = "ACTIVE";
+  }
+
+  if (audience) {
+    where.audience = audience;
+  }
+
+  if (mealtype) {
+    where.mealtype = mealtype;
   }
 
   if (query) {
@@ -150,6 +166,7 @@ export const getMenus = async (
       id: menu.id,
       name: menu.name,
       mealtype: menu.mealtype,
+      audience: menu.audience,
       currentPrice: menu.PriceHistory[0]?.price ?? 0,
       active: menu.status === "ACTIVE",
     })),
@@ -182,7 +199,8 @@ export const createMenu = async (
         await tx.menu_items.create({
           data: {
             name: input.name,
-            mealtype: input.mealtype
+            mealtype: input.mealtype,
+            audience: input.audience || 'EMPLOYEE'
           }
         });
 
@@ -208,6 +226,7 @@ export const createMenu = async (
     metadata: {
       menuItemId: menus.id,
       menuname: input.name,
+      audience: menus.audience,
       effectiveFrom: effectiveFrom,
       price: input.price
     },
@@ -226,24 +245,7 @@ export const updateMenu = async (
   context: CreateMenuContext
 ) => {
 
-  await createAuditLog({
-    userId: context.AdminId,
-    action: 'MENU_ITEM_UPDATED',
-    entityType: 'Menu_items',
-    entityId: id,
-    metadata: {
-      menuItemId: id,
-      /*     menuname:input.name,
-          effectiveFrom: effectiveFrom,
-          price: input.price */
-    },
-    ipAddress: context.ipAddress,
-    userAgent: context.userAgent,
-  });
-
-
-
-  const updated = prisma.menu_items.update({
+  const updated = await prisma.menu_items.update({
     where: {
       id
     },
@@ -258,6 +260,11 @@ export const updateMenu = async (
           input.mealtype
       }),
 
+      ...(input.audience && {
+        audience:
+          input.audience
+      }),
+
       ...(input.active !== undefined && {
         status:
           input.active
@@ -265,6 +272,22 @@ export const updateMenu = async (
             : 'INACTIVE'
       })
     }
+  });
+
+  await createAuditLog({
+    userId: context.AdminId,
+    action: 'MENU_ITEM_UPDATED',
+    entityType: 'Menu_items',
+    entityId: id,
+    metadata: {
+      menuItemId: id,
+      name: input.name,
+      mealtype: input.mealtype,
+      audience: input.audience,
+      active: input.active
+    },
+    ipAddress: context.ipAddress,
+    userAgent: context.userAgent,
   });
 
   await invalidateMenuCache(id);

@@ -25,11 +25,14 @@ export async function buildMenuListKey(
   activeOnly: boolean,
   page: number,
   pageSize: number,
-  query?: string
+  query?: string,
+  audience?: string,
+  status?: string,
+  mealtype?: string
 ) {
   const version = await getMenuCacheVersion();
 
-  return `menu:list:v${version}:${activeOnly}:${page}:${pageSize}:${query ?? ""}`;
+  return `menu:list:v${version}:${activeOnly}:${page}:${pageSize}:${query ?? ""}:${audience ?? ""}:${status ?? ""}:${mealtype ?? ""}`;
 }
 
 export function buildMenuKey(menuId: string) {

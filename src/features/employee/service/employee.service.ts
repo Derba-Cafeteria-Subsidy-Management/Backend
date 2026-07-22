@@ -5,19 +5,21 @@ import { saveImportPreview } from "../../menu/helpers/import-cache.js";
 import { getMealsToday } from "../Helper/getmeal.helper.js";
 import { buildEmployeeKey, buildEmployeeListKey } from "../helpers/employee-cache.helper.js";
 import { invalidateEmployeeCache } from "../helpers/cache-invalidation.helper.js";
-import { CreateEmployeeContext, ImportEmployeeError, ImportEmployeeRow } from "../types/employee.types.js";
+import { CreateEmployeeContext, ImportEmployeeError, ImportEmployeeRow, CreateEmployeeInput, UpdateEmployeeInput } from "../types/employee.types.js";
 import XLSX from "xlsx";
 import { ConflictError, NotFoundError, ValidationError } from "../../../errors/errors/apperror.js";
 import { getAuthenticationSettings } from "../../system-settings/service/system-settings.service.js";
-import { Prisma, SubsidyType } from "@prisma/client";
+import { Prisma, SubsidyType, EmployeeType } from "@prisma/client";
 
 const EMPLOYEE_DETAIL_CACHE_TTL = 600;
 
 export const getEmployees = async (
-    subsidytype: SubsidyType = SubsidyType.NORMAL,
+    subsidytype?: SubsidyType,
     employeeNumber?: string,
     name?: string,
     status?: string,
+    employeeType?: EmployeeType,
+    groupId?: string,
     page = 1,
     limit = 20
 ) => {
@@ -25,6 +27,8 @@ export const getEmployees = async (
         employeeNumber,
         name,
         status,
+        employeeType,
+        groupId,
         page,
         limit
     );
@@ -50,15 +54,26 @@ export const getEmployees = async (
             },
         }),
 
-
         ...(status && {
             status: status as any,
         }),
 
         ...(subsidytype && {
             subsidyType: subsidytype as any
-        })
+        }),
 
+        ...(employeeType && {
+            employeeType
+        }),
+
+        ...(groupId && {
+            groupMembers: {
+                some: {
+                    groupId,
+                    active: true
+                }
+            }
+        })
     };
 
     const employees =
@@ -69,6 +84,19 @@ export const getEmployees = async (
             orderBy: {
                 created_at: 'desc',
             },
+            include: {
+                groupMembers: {
+                    where: { active: true },
+                    include: {
+                        group: {
+                            select: {
+                                id: true,
+                                name: true
+                            }
+                        }
+                    }
+                }
+            }
         });
 
     const total =
@@ -76,20 +104,18 @@ export const getEmployees = async (
             where,
         });
 
-    const employeeData =
-        await Promise.all(
-            employees.map(async (employee) => ({
-                id: employee.id,
-                employeeNumber:
-                    employee.Employee_number,
-                fullName:
-                    employee.full_name,
-                status:
-                    employee.status,
-                photo:
-                    employee.photo ? employee.photo : null
-            }))
-        );
+    const employeeData = employees.map((employee) => ({
+        id: employee.id,
+        employeeNumber: employee.Employee_number,
+        fullName: employee.full_name,
+        status: employee.status,
+        photo: employee.photo ? employee.photo : null,
+        employeeType: employee.employeeType,
+        currentGroup: employee.groupMembers?.[0]?.group ? {
+            id: employee.groupMembers[0].group.id,
+            name: employee.groupMembers[0].group.name,
+        } : null
+    }));
 
     const response = {
         employees: employeeData,
@@ -138,6 +164,9 @@ export const SearchSpecialEmployeeBy = async (
         const dbEmployee = await prisma.employees.findFirst({
             where: {
                 subsidyType: SubsidyType.SPECIAL,
+                employeeType: EmployeeType.NORMAL,
+
+
 
                 ...(employeeNumber && {
                     Employee_number: employeeNumber,
@@ -157,8 +186,20 @@ export const SearchSpecialEmployeeBy = async (
                 full_name: true,
                 status: true,
                 subsidyType: true,
+                employeeType: true,
                 photo: true,
                 created_at: true,
+                groupMembers: {
+                    where: { active: true },
+                    select: {
+                        group: {
+                            select: {
+                                id: true,
+                                name: true
+                            }
+                        }
+                    }
+                }
             },
         });
 
@@ -174,8 +215,13 @@ export const SearchSpecialEmployeeBy = async (
             fullName: dbEmployee.full_name,
             status: dbEmployee.status,
             subsidyType: dbEmployee.subsidyType,
+            employeeType: dbEmployee.employeeType,
             photo: dbEmployee.photo,
             createdAt: dbEmployee.created_at,
+            currentGroup: dbEmployee.groupMembers?.[0]?.group ? {
+                id: dbEmployee.groupMembers[0].group.id,
+                name: dbEmployee.groupMembers[0].group.name,
+            } : null
         };
 
         await cacheSet(
@@ -238,7 +284,19 @@ export const SearchEmployeeBy = async (
                     full_name: true,
                     status: true,
                     photo: true,
+                    employeeType: true,
                     created_at: true,
+                    groupMembers: {
+                        where: { active: true },
+                        select: {
+                            group: {
+                                select: {
+                                    id: true,
+                                    name: true
+                                }
+                            }
+                        }
+                    }
                 },
             });
 
@@ -258,8 +316,14 @@ export const SearchEmployeeBy = async (
                 dbEmployee.status,
             photo:
                 dbEmployee.photo,
+            employeeType:
+                dbEmployee.employeeType,
             createdAt:
                 dbEmployee.created_at,
+            currentGroup: dbEmployee.groupMembers?.[0]?.group ? {
+                id: dbEmployee.groupMembers[0].group.id,
+                name: dbEmployee.groupMembers[0].group.name,
+            } : null
         };
 
         await cacheSet(
@@ -282,17 +346,9 @@ export const SearchEmployeeBy = async (
 
 
 export const createEmployee = async (
-    body: {
-        employeeNumber: string;
-        fullName: string;
-        fingerprintId?: string;
-        photo?: string;
-        subsidyType?: SubsidyType;
-
-    },
+    body: CreateEmployeeInput,
     context: CreateEmployeeContext
 ) => {
-
     const exists =
         await prisma.employees.findFirst({
             where: {
@@ -306,26 +362,47 @@ export const createEmployee = async (
         });
 
     if (exists) {
-        throw new Error(
+        throw new ConflictError(
             'Employee already exists'
         );
     }
 
-    const employee =
-        await prisma.employees.create({
-            data: {
-                Employee_number:
-                    body.employeeNumber,
-                full_name:
-                    body.fullName,
-                fingerprint_id:
-                    body.fingerprintId ?? null,
-                photo:
-                    body.photo ?? null,
+    if (body.employeeType === EmployeeType.SHIFT) {
+        if (!body.groupId) {
+            throw new ValidationError('Group assignment is required for SHIFT employees');
+        }
+        const group = await prisma.employeeGroup.findUnique({
+            where: { id: body.groupId }
+        });
+        if (!group || group.status !== 'ACTIVE') {
+            throw new ValidationError('Assigned group not found or is inactive');
+        }
+    }
 
-                subsidyType: body.subsidyType ?? SubsidyType.NORMAL
+    const employee = await prisma.$transaction(async (tx) => {
+        const emp = await tx.employees.create({
+            data: {
+                Employee_number: body.employeeNumber,
+                full_name: body.fullName,
+                fingerprint_id: body.fingerprintId ?? null,
+                photo: body.photo ?? null,
+                subsidyType: body.subsidyType ?? SubsidyType.NORMAL,
+                employeeType: body.employeeType ?? EmployeeType.NORMAL
             },
         });
+
+        if (body.employeeType === EmployeeType.SHIFT && body.groupId) {
+            await tx.employeeGroupMember.create({
+                data: {
+                    employeeId: emp.id,
+                    groupId: body.groupId,
+                    active: true
+                }
+            });
+        }
+
+        return emp;
+    });
 
     await createAuditLog({
         userId: context.AdminId,
@@ -340,11 +417,29 @@ export const createEmployee = async (
             fingerprint_id:
                 body.fingerprintId ?? null,
             photo:
-                body.photo ?? null
+                body.photo ?? null,
+            employeeType:
+                employee.employeeType
         },
         ipAddress: context.ipAddress,
         userAgent: context.userAgent,
     });
+
+    if (body.employeeType === EmployeeType.SHIFT && body.groupId) {
+        await createAuditLog({
+            userId: context.AdminId,
+            action: 'GROUP_MEMBER_ASSIGNED',
+            entityType: 'EmployeeGroupMember',
+            entityId: employee.id, // Reference Employee or search member later
+            metadata: {
+                employeeId: employee.id,
+                employeeNumber: employee.Employee_number,
+                groupId: body.groupId,
+            },
+            ipAddress: context.ipAddress,
+            userAgent: context.userAgent,
+        });
+    }
 
     await invalidateEmployeeCache(employee.Employee_number);
 
@@ -394,29 +489,69 @@ export const createEmployee = async (
 
 export const updateEmployee = async (
     id: string,
-    body: {
-        fullName?: string;
-        photo?: string | null;
-        status?: string;
-        fingerprintId?: string | null;
-        subsidyType?: SubsidyType;
-    },
+    body: UpdateEmployeeInput,
     context: CreateEmployeeContext
 ) => {
+    const current = await prisma.employees.findUnique({
+        where: { id },
+    });
 
-    const employee =
-        await prisma.employees.findUnique({
-            where: { id },
-        });
-
-    if (!employee) {
-        throw new Error(
+    if (!current) {
+        throw new NotFoundError(
             'Employee not found'
         );
     }
 
-    const updated =
-        await prisma.employees.update({
+    const nextType = body.employeeType ?? current.employeeType;
+
+    const updated = await prisma.$transaction(async (tx) => {
+        if (current.employeeType === EmployeeType.NORMAL && nextType === EmployeeType.SHIFT) {
+            if (!body.groupId) {
+                throw new ValidationError('Group assignment is required when changing to SHIFT type');
+            }
+            const group = await tx.employeeGroup.findUnique({ where: { id: body.groupId } });
+            if (!group || group.status !== 'ACTIVE') {
+                throw new ValidationError('Assigned group not found or is inactive');
+            }
+            await tx.employeeGroupMember.create({
+                data: {
+                    employeeId: id,
+                    groupId: body.groupId,
+                    active: true
+                }
+            });
+        } else if (current.employeeType === EmployeeType.SHIFT && nextType === EmployeeType.NORMAL) {
+            // Close active group membership
+            await tx.employeeGroupMember.updateMany({
+                where: { employeeId: id, active: true },
+                data: { active: false, leftAt: new Date() }
+            });
+        } else if (current.employeeType === EmployeeType.SHIFT && nextType === EmployeeType.SHIFT && body.groupId) {
+            const activeMem = await tx.employeeGroupMember.findFirst({
+                where: { employeeId: id, active: true }
+            });
+            if (!activeMem || activeMem.groupId !== body.groupId) {
+                const group = await tx.employeeGroup.findUnique({ where: { id: body.groupId } });
+                if (!group || group.status !== 'ACTIVE') {
+                    throw new ValidationError('Assigned group not found or is inactive');
+                }
+                if (activeMem) {
+                    await tx.employeeGroupMember.update({
+                        where: { id: activeMem.id },
+                        data: { active: false, leftAt: new Date() }
+                    });
+                }
+                await tx.employeeGroupMember.create({
+                    data: {
+                        employeeId: id,
+                        groupId: body.groupId,
+                        active: true
+                    }
+                });
+            }
+        }
+
+        return tx.employees.update({
             where: { id },
             data: {
                 ...(body.fullName && {
@@ -429,7 +564,7 @@ export const updateEmployee = async (
                         body.fingerprintId ?? null,
                 }),
 
-                ...(body.photo && {
+                ...(body.photo !== undefined && {
                     photo:
                         body.photo ?? null,
                 }),
@@ -442,26 +577,45 @@ export const updateEmployee = async (
                 ...(body.subsidyType && {
                     subsidyType: body.subsidyType,
                 }),
+
+                ...(body.employeeType && {
+                    employeeType: body.employeeType,
+                }),
             },
         });
-
+    });
 
     await createAuditLog({
         userId: context.AdminId,
         action: 'update_employee',
         entityType: 'Employees',
-        entityId: employee.id,
+        entityId: current.id,
         metadata: {
             id: updated.id,
             updatedAt:
                 updated.updated_at,
-
+            employeeType: updated.employeeType,
         },
         ipAddress: context.ipAddress,
         userAgent: context.userAgent,
     });
 
-    await invalidateEmployeeCache(employee.Employee_number);
+    if (current.employeeType !== updated.employeeType) {
+        await createAuditLog({
+            userId: context.AdminId,
+            action: 'EMPLOYEE_TYPE_CHANGED',
+            entityType: 'Employees',
+            entityId: current.id,
+            metadata: {
+                from: current.employeeType,
+                to: updated.employeeType,
+            },
+            ipAddress: context.ipAddress,
+            userAgent: context.userAgent,
+        });
+    }
+
+    await invalidateEmployeeCache(current.Employee_number);
 
     return {
         id: updated.id,

@@ -24,16 +24,16 @@ export async function buildEmployeeListKey(
   employeeNumber?: string,
   name?: string,
   status?: string,
+  employeeType?: string,
+  groupId?: string,
   page = 1,
   limit = 20
 ) {
   const version = await getEmployeeCacheVersion();
 
-  return `employee:list:v${version}:${page}:${limit}:${employeeNumber ?? ""}:${name ?? ""}:${status ?? ""}`;
+  return `employee:list:v${version}:${page}:${limit}:${employeeNumber ?? ""}:${name ?? ""}:${status ?? ""}:${employeeType ?? ""}:${groupId ?? ""}`;
 }
 
-
-
-export function buildEmployeeKey(employeeNumber?: string,) {
+export function buildEmployeeKey(employeeNumber?: string) {
   return `employee:${employeeNumber ?? ""}`;
 }

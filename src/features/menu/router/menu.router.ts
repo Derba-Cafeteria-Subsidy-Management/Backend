@@ -42,6 +42,24 @@ export const menuRouter = Router();
  *         schema:
  *           type: string
  *         description: Search by menu name or meal type [BREAKFAST, LUNCH, DINNER, DRINK].
+ *       - in: query
+ *         name: audience
+ *         schema:
+ *           type: string
+ *           enum: [EMPLOYEE, GUEST]
+ *         description: Filter by audience type.
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [ACTIVE, INACTIVE]
+ *         description: Filter by status.
+ *       - in: query
+ *         name: mealtype
+ *         schema:
+ *           type: string
+ *           enum: [BREAKFAST, LUNCH, DINNER, DRINK]
+ *         description: Filter by meal type.
  *     responses:
  *       200:
  *         description: Menu items retrieved successfully.
@@ -85,6 +103,18 @@ menuRouter.get(
  *         schema:
  *           type: string
  *         description: Search by menu name or meal type [BREAKFAST, LUNCH, DINNER, DRINK].
+ *       - in: query
+ *         name: audience
+ *         schema:
+ *           type: string
+ *           enum: [EMPLOYEE, GUEST]
+ *         description: Filter by audience type.
+ *       - in: query
+ *         name: mealtype
+ *         schema:
+ *           type: string
+ *           enum: [BREAKFAST, LUNCH, DINNER, DRINK]
+ *         description: Filter by meal type.
  *     responses:
  *       200:
  *         description: Menu items retrieved successfully.
@@ -131,6 +161,11 @@ menuRouter.get(
  *               price:
  *                 type: number
  *                 example: 120
+ *               audience:
+ *                 type: string
+ *                 enum: [EMPLOYEE, GUEST]
+ *                 default: EMPLOYEE
+ *                 example: EMPLOYEE
  *     responses:
  *       201:
  *         description: Menu item created successfully.
@@ -183,6 +218,9 @@ menuRouter.post(
  *                enum: [BREAKFAST, LUNCH, DINNER, DRINK]
  *               active:
  *                 type: boolean
+ *               audience:
+ *                 type: string
+ *                 enum: [EMPLOYEE, GUEST]
  *     responses:
  *       200:
  *         description: Menu item updated successfully.

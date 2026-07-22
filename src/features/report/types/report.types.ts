@@ -9,6 +9,7 @@ export interface SessionSummary {
   totalAmount: number;
   employeeTotal: number;
   companyTotal: number;
+  invitationExpense?: number;
 }
 
 export interface DailySummaryResponse {
@@ -19,5 +20,17 @@ export interface DailySummaryResponse {
     amount: number;
     employeeTotal: number;
     companyTotal: number;
+    companySubsidy?: number;
+    invitationExpense?: number;
   };
+  byEmployeeType?: {
+    NORMAL: { count: number; companyShare: number };
+    SHIFT: { count: number; companyShare: number };
+  };
+  byGroup?: Record<string, {
+    groupId: string;
+    groupName: string;
+    count: number;
+    companyShare: number;
+  }>;
 }

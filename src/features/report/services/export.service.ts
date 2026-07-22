@@ -77,6 +77,10 @@ export const generateCompanyPaymentExcel = async (data: any) => {
   sheet.columns = [
     { header: "Total Menu Number", key: "total_menu_number", width: 20 },
     { header: "Total Menu Price", key: "total_menu_price", width: 20 },
+    { header: "Company Subsidy (Normal)", key: "company_subsidy", width: 25 },
+    { header: "Employee Payment", key: "employee_payment", width: 20 },
+    { header: "Shift Employee Expense", key: "shift_employee_expense", width: 25 },
+    { header: "Invitation Expense", key: "invitation_expense", width: 20 },
     { header: "Total Company Share", key: "total_company_share", width: 20 },
     { header: "Transaction From Date", key: "transactionFromDate", width: 25 },
     { header: "Transaction To Date", key: "transactionToDate", width: 25 },
@@ -87,6 +91,17 @@ export const generateCompanyPaymentExcel = async (data: any) => {
     sheet.addRows(data);
   } else {
     sheet.addRow(data);
+  }
+
+  if (data.byGroup && data.byGroup.length > 0) {
+    const groupSheet = workbook.addWorksheet("Groups Breakdown");
+    groupSheet.columns = [
+      { header: "Group ID", key: "groupId", width: 40 },
+      { header: "Group Name", key: "groupName", width: 25 },
+      { header: "Meals Count", key: "count", width: 15 },
+      { header: "Company Share Expense", key: "companyShare", width: 25 },
+    ];
+    groupSheet.addRows(data.byGroup);
   }
 
   return workbook;

@@ -37,3 +37,27 @@ export const parseDateOnly = (value?: string): Date => {
 
   return new Date(year, month - 1, day);
 };
+
+export function parseDateOnlyUTC(dateStr: string): Date {
+  const [year, month, day] = dateStr.split("-").map(Number);
+
+  return new Date(
+    Date.UTC(
+      year!,
+      month! - 1,
+      day
+    )
+  );
+}
+
+export const startOfDayUtc = (date: Date): Date => {
+  const result = new Date(date);
+  result.setUTCHours(0, 0, 0, 0); // force UTC midnight
+  return result;
+};
+
+export const endOfDayUtc = (date: Date): Date => {
+  const result = new Date(date);
+  result.setUTCHours(23, 59, 59, 999); // force UTC end of day
+  return result;
+};

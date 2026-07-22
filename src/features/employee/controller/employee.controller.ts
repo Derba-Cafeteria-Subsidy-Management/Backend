@@ -8,12 +8,12 @@ import { invalidateEmployeeCache } from "../helpers/cache-invalidation.helper.js
 import type { Request, Response, NextFunction } from 'express';
 import { randomUUID } from "node:crypto";
 import { ImportEmployeeRow } from "../types/employee.types";
-import { SubsidyType } from "@prisma/client";
+import { SubsidyType, EmployeeType } from "@prisma/client";
 
 export const getEmployeesController =
     async (req: Request, res: Response) => {
 
-        const subsidytype = req.query.subsidytype as SubsidyType;
+        const subsidytype = req.query.subsidytype as SubsidyType | undefined;
 
         const employeeNumber =
             req.query.employeeNumber as string;
@@ -24,6 +24,9 @@ export const getEmployeesController =
 
         const status =
             req.query.status as string;
+
+        const employeeType = req.query.employeeType as EmployeeType | undefined;
+        const group = req.query.group as string | undefined;
 
         const page =
             req.query.page
@@ -37,7 +40,7 @@ export const getEmployeesController =
 
         const isCashier = req.user!.role === "CASHIER";
         const settings = await getSystemSettings();
-        const isSearching = employeeNumber || name || status;
+        const isSearching = employeeNumber || name || status || employeeType || group;
 
         if (isCashier && !settings.employeeSearchEnabled && isSearching) {
             return res.status(403).json({
@@ -48,12 +51,27 @@ export const getEmployeesController =
 
 
         if (
+            subsidytype !== undefined && (
             typeof subsidytype !== 'string' ||
             !Object.values(SubsidyType).includes(subsidytype as SubsidyType)
+            )
         ) {
             res.status(400).json({
                 success: false,
                 message: `Invalid policy. Allowed values: ${Object.values(SubsidyType).join(', ')}`
+            });
+            return;
+        }
+
+        if (
+            employeeType !== undefined && (
+            typeof employeeType !== 'string' ||
+            !Object.values(EmployeeType).includes(employeeType as EmployeeType)
+            )
+        ) {
+            res.status(400).json({
+                success: false,
+                message: `Invalid employeeType. Allowed values: ${Object.values(EmployeeType).join(', ')}`
             });
             return;
         }
@@ -63,6 +81,8 @@ export const getEmployeesController =
             employeeNumber,
             name,
             status,
+            employeeType,
+            group,
             page,
             limit
         );

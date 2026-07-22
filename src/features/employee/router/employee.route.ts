@@ -21,7 +21,7 @@ export const employeeRouter = Router();
  *     parameters:
  *       - in: query
  *         name: subsidytype
- *         required: true
+ *         required: false
  *         schema:
  *           type: string
  *           enum:
@@ -44,6 +44,18 @@ export const employeeRouter = Router();
  *           enum: [ACTIVE, INACTIVE]
  *         description: Filter by employee status.
  *       - in: query
+ *         name: employeeType
+ *         schema:
+ *           type: string
+ *           enum: [NORMAL, SHIFT]
+ *         description: Filter by employee category type.
+ *       - in: query
+ *         name: group
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Filter by employee group membership ID.
+ *       - in: query
  *         name: page
  *         schema:
  *           type: integer
@@ -60,7 +72,7 @@ export const employeeRouter = Router();
  *         description: Authentication required.
  *       403:
  *         description: Access denied.
- */
+ * */
 employeeRouter.get(
     '/',
     authenticate,
@@ -112,6 +124,14 @@ employeeRouter.get(
  *                 type: string
  *                 enum: [NORMAL,SPECIAL]
  *                 example: NORMAL
+ *               employeeType:
+ *                 type: string
+ *                 enum: [NORMAL,SHIFT]
+ *                 example: NORMAL
+ *               groupId:
+ *                 type: string
+ *                 format: uuid
+ *                 example: aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee
  *     responses:
  *       201:
  *         description: Employee created successfully.
@@ -298,6 +318,12 @@ employeeRouter.get(
  *               status:
  *                 type: string
  *                 enum: [ACTIVE, INACTIVE]
+ *               employeeType:
+ *                 type: string
+ *                 enum: [NORMAL, SHIFT]
+ *               groupId:
+ *                 type: string
+ *                 format: uuid
  *     responses:
  *       200:
  *         description: Employee updated successfully.

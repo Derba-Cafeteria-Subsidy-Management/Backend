@@ -189,9 +189,9 @@ export const CreateMenuInput = z.object({
             return z.NEVER;
         }
         return upperValue as 'BREAKFAST' | 'LUNCH' | 'DINNER' | 'DRINK';
-    }
-)
-    // input will be a string like the ""2026-08-01", so we need to transform it to a Date object
+    }),
+    
+    audience: z.enum(['EMPLOYEE', 'GUEST']).default('EMPLOYEE').optional()
 });
 
 export const UpdateMenuInput = z.object({
@@ -211,5 +211,7 @@ export const UpdateMenuInput = z.object({
     }).optional(),
 
     active: z.boolean().optional(),
+    
+    audience: z.enum(['EMPLOYEE', 'GUEST']).optional()
 });
 

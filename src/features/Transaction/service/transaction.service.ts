@@ -17,6 +17,7 @@ import {
 import {
   parseDateOnly,
   startOfDay,
+  startOfDayUtc,
   toDateOnlyString,
 } from '../../shared/helpers/date.helper.js';
 import type {
@@ -36,6 +37,9 @@ import {
 
 
 
+
+import { ensureFutureSchedule, getSlotHalfForSession, resolveGroupForSlot } from '../../employee-group/helpers/rotation.helper.js';
+import { EmployeeType } from '@prisma/client';
 
 type PricingDb = PrismaClient | Prisma.TransactionClient;
 
@@ -162,9 +166,14 @@ const prepareTransactionItems = async (
           },
           select: {
             mealtype: true,
+            audience: true,
           },
         }),
       ]);
+
+      if (menuItem.audience !== 'EMPLOYEE') {
+        throw new ValidationError(`Menu item is not for employees (audience is ${menuItem.audience})`);
+      }
 
       return {
         menuItemId: item.menuItemId,
@@ -313,7 +322,7 @@ export const createTransaction = async (
   input: CreateTransactionInput,
   context: CreateTransactionContext
 ) => {
-  const transactionDate = startOfDay(new Date());
+  const transactionDate = startOfDayUtc(new Date());
 
   let createdTransaction: TransactionWithRelations;
 
@@ -335,9 +344,61 @@ export const createTransaction = async (
         
 
       
-      const policy: SubsidyPolicy =  employee.subsidyType === SubsidyType.SPECIAL
-                  ? SubsidyPolicy.FULL_COMPANY
-                  : SubsidyPolicy.DEFAULT;
+      let policy: SubsidyPolicy;
+
+      if (employee.employeeType === EmployeeType.SHIFT) {
+  const slotHalf = getSlotHalfForSession(input.mealSession);
+
+  if (!slotHalf) {
+    throw new ValidationError(
+      "SHIFT employees are not eligible for this meal session."
+    );
+  }
+
+  // Ensure future schedule exists (extends it if needed)
+  await ensureFutureSchedule(tx);
+
+  const scheduledGroup = await resolveGroupForSlot(
+    transactionDate,
+    slotHalf,
+    tx
+  );
+
+  if (!scheduledGroup) {
+    throw new ValidationError(
+      "No schedule exists for this meal session."
+    );
+  }
+
+  const activeGroupMember =
+    await tx.employeeGroupMember.findFirst({
+      where: {
+        employeeId: employee.id,
+        active: true,
+      },
+      include: {
+        group: true,
+      },
+    });
+
+  if (!activeGroupMember) {
+    throw new ValidationError(
+      "SHIFT employee does not belong to any active group."
+    );
+  }
+
+  if (activeGroupMember.groupId !== scheduledGroup.id) {
+    throw new ValidationError(
+      `Employee group (${activeGroupMember.group.name}) is not scheduled for this session. Scheduled group is ${scheduledGroup.name}.`
+    );
+  }
+
+  policy = SubsidyPolicy.FULL_COMPANY;
+} else {
+        policy = employee.subsidyType === SubsidyType.SPECIAL
+          ? SubsidyPolicy.FULL_COMPANY
+          : SubsidyPolicy.DEFAULT;
+      }
 
       const preparedItems =
         await prepareTransactionItems(

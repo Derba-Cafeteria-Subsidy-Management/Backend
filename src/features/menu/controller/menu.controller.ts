@@ -1,5 +1,5 @@
-
 import type { Request, Response, NextFunction } from 'express';
+import { FoodType, MenuAudience, MenuItemStatus } from '@prisma/client';
 
 import {
     getMenus,
@@ -26,13 +26,29 @@ export const getMenu =
         const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
         const pageSize = req.query.pageSize ? parseInt(req.query.pageSize as string, 10) : 10;
         const query = req.query.query ? String(req.query.query) : undefined;
+        const audience = req.query.audience as MenuAudience | undefined;
+        const status = req.query.status as MenuItemStatus | undefined;
+        const mealtype = req.query.mealtype as FoodType | undefined;
+
+        if (audience && !['EMPLOYEE', 'GUEST'].includes(audience)) {
+            return res.status(400).json({ success: false, message: 'Invalid audience filter' });
+        }
+        if (status && !['ACTIVE', 'INACTIVE'].includes(status)) {
+            return res.status(400).json({ success: false, message: 'Invalid status filter' });
+        }
+        if (mealtype && !['BREAKFAST', 'LUNCH', 'DINNER', 'DRINK'].includes(mealtype)) {
+            return res.status(400).json({ success: false, message: 'Invalid mealtype filter' });
+        }
 
         const data =
             await getMenus(
                 activeOnly,
                 page,
                 pageSize,
-                query
+                query,
+                audience,
+                status,
+                mealtype
             );
 
         res.status(200).json({
@@ -48,13 +64,29 @@ export const getActiveMenu =
         const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
         const pageSize = req.query.pageSize ? parseInt(req.query.pageSize as string, 10) : 10;
         const query = req.query.query ? String(req.query.query) : undefined;
+        const audience = req.query.audience as MenuAudience | undefined;
+        const status = req.query.status as MenuItemStatus | undefined;
+        const mealtype = req.query.mealtype as FoodType | undefined;
+
+        if (audience && !['EMPLOYEE', 'GUEST'].includes(audience)) {
+            return res.status(400).json({ success: false, message: 'Invalid audience filter' });
+        }
+        if (status && !['ACTIVE', 'INACTIVE'].includes(status)) {
+            return res.status(400).json({ success: false, message: 'Invalid status filter' });
+        }
+        if (mealtype && !['BREAKFAST', 'LUNCH', 'DINNER', 'DRINK'].includes(mealtype)) {
+            return res.status(400).json({ success: false, message: 'Invalid mealtype filter' });
+        }
 
         const data =
             await getMenus(
                 activeOnly,
                 page,
                 pageSize,
-                query
+                query,
+                audience,
+                status,
+                mealtype
             );
 
         res.status(200).json({

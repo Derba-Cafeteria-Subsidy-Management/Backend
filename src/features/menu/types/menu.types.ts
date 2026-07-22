@@ -1,6 +1,5 @@
-import { FoodType } from "@prisma/client";
+import { FoodType, MenuAudience } from "@prisma/client";
 import { RequestContext } from "../../auth/types/auth.types";
-
 
 
 
@@ -8,6 +7,7 @@ export interface MenuResponse {
   id: string;
   name: string;
   mealtype: FoodType;
+  audience: MenuAudience;
   currentPrice: number;
   active: boolean;
 }
@@ -16,12 +16,14 @@ export interface CreateMenuInput {
   name: string;
   mealtype: FoodType;
   price: number;
+  audience?: MenuAudience;
 }
 
 export interface UpdateMenuInput {
   name?: string;
   mealtype?: FoodType;
   active?: boolean;
+  audience?: MenuAudience;
 }
 
 export interface CreatePriceVersionInput {
