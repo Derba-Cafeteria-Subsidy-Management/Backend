@@ -21,6 +21,7 @@ export async function bumpEmployeeCacheVersion(): Promise<number> {
 }
 
 export async function buildEmployeeListKey(
+  subsidytype?: string,
   employeeNumber?: string,
   name?: string,
   status?: string,
@@ -31,7 +32,7 @@ export async function buildEmployeeListKey(
 ) {
   const version = await getEmployeeCacheVersion();
 
-  return `employee:list:v${version}:${page}:${limit}:${employeeNumber ?? ""}:${name ?? ""}:${status ?? ""}:${employeeType ?? ""}:${groupId ?? ""}`;
+  return `employee:list:v${version}:${page}:${limit}:${employeeNumber ?? ""}:${name ?? ""}:${status ?? ""}:${employeeType ?? ""}:${groupId ?? ""}:${subsidytype ?? ""}`;
 }
 
 export function buildEmployeeKey(employeeNumber?: string) {

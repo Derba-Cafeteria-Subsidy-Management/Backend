@@ -24,6 +24,7 @@ export const getEmployees = async (
     limit = 20
 ) => {
     const cacheKey = await buildEmployeeListKey(
+        subsidytype,
         employeeNumber,
         name,
         status,
@@ -110,6 +111,7 @@ export const getEmployees = async (
         fullName: employee.full_name,
         status: employee.status,
         photo: employee.photo ? employee.photo : null,
+        subsidytype: employee.subsidyType,
         employeeType: employee.employeeType,
         currentGroup: employee.groupMembers?.[0]?.group ? {
             id: employee.groupMembers[0].group.id,
